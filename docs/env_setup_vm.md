@@ -1,0 +1,325 @@
+# RustChat - 开发环境与依赖配置（Ubuntu 虚拟机版）
+
+---
+
+## 1. 推荐方案（重要）
+
+本项目推荐使用：
+
+👉 **Ubuntu 虚拟机 + SSH + Windows 开发工具**
+
+优点：
+
+- 接近真实服务器环境
+- 避免 Windows 兼容问题
+- 可练习部署 & 网络
+- 结构更清晰（前后端分离）
+
+---
+
+## 2. Ubuntu 镜像推荐
+
+### 推荐版本
+
+👉 **Ubuntu 22.04 LTS（强烈推荐）**
+
+原因：
+
+- 长期支持（LTS）
+- 稳定
+- Rust / Node / PostgreSQL 兼容性最好
+- 教程最多
+
+---
+
+### 不推荐版本
+
+- 24.04（太新，可能踩坑）
+- 20.04（稍老）
+
+---
+
+## 3. 虚拟机配置建议
+
+最低配置（能跑）：
+
+- CPU：2 核
+- 内存：4 GB
+- 磁盘：30 GB
+
+推荐配置（更流畅）：
+
+- CPU：4 核
+- 内存：8 GB
+- 磁盘：50 GB+
+
+---
+
+## 4. 虚拟机软件选择
+
+推荐：
+
+- VMware Workstation
+
+---
+
+## 5. Ubuntu 环境配置
+
+### 1. Ubuntu 镜像下载
+
+官方下载地址：
+
+https://ubuntu.com/download/desktop
+
+Ctrl + F：搜索 releases 找到 Ubuntu Server 版本的 .torrent 下载（BT）。
+
+> Ubuntu Server + Windows + VSCode Remote SSH ，所以不需要 GUI 。
+
+### 2. 镜像安装
+
+网络配置选 NAT + DHCP 即可。
+
+最重要的是这个：
+
+```text
+☑ Install OpenSSH server
+```
+
+### 3. SSH连接
+
+拿到 ip ：
+
+```bash
+ip a
+```
+
+然后自己测一下 ping 。OK 后再在 VSCode 的 Remote SSH 里面配置：
+
+```text
+ssh username@IP
+```
+
+### 4. 换镜像源
+
+1️⃣ 备份原源
+
+```bash
+sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
+```
+
+2️⃣ 编辑源文件
+
+```bash
+sudo nano /etc/apt/sources.list
+```
+
+👉 清空内容（Ctrl + K 连按）
+
+👉 替换为（Ubuntu 22.04）：
+
+```bash
+deb https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+
+deb-src https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb-src https://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+deb-src https://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb-src https://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+```
+
+3️⃣ 更新软件源
+
+```bash
+sudo apt update
+```
+
+4️⃣ 升级系统
+
+```bash
+sudo apt upgrade -y
+```
+
+5️⃣ 验证是否成功
+
+```bash
+apt policy
+```
+
+👉 看到：
+
+```text
+mirrors.aliyun.com
+```
+
+### 5. 安装基础开发工具
+
+```bash
+sudo apt install -y build-essential curl git
+```
+
+---
+
+## 6. 安装 Rust
+
+```bash
+curl https://sh.rustup.rs -sSf | sh
+source $HOME/.cargo/env
+```
+
+验证安装：
+
+```bash
+rustc --version
+cargo --version
+```
+
+测试：
+
+```bash
+cd ~/rustchat-server/backend
+cargo init
+cargo run
+```
+
+输出：
+
+```text
+Hello, world!
+```
+
+---
+
+## 7. 安装 Node.js（前端）
+
+推荐用 nvm：
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+source ~/.bashrc
+nvm install 18
+```
+
+---
+
+## 8. 安装 PostgreSQL
+
+```bash
+sudo apt install postgresql postgresql-contrib
+```
+
+启动：
+
+```bash
+sudo systemctl start postgresql
+```
+
+创建数据库：
+
+```bash
+sudo -u postgres psql
+CREATE DATABASE rustchat;
+```
+
+---
+
+## 12. 运行 RustChat 服务
+
+务必监听：
+
+```rust
+0.0.0.0:3000
+```
+
+⚠️ 不要用：
+
+```rust
+127.0.0.1
+```
+
+否则外部访问不到
+
+---
+
+## 13. Postman 测试虚拟机服务
+
+可以直接在 Windows 上测试：
+
+```text
+ws://<虚拟机IP>:3000/ws
+```
+
+要求：
+
+- 服务监听 0.0.0.0
+- 端口开放
+- 防火墙允许
+
+---
+
+## 14. 最终开发结构
+
+```text
+Windows（开发）
+  ↓ SSH
+Ubuntu VM（运行）
+  ├── backend (Rust)
+  ├── frontend (React/Vue)
+  └── PostgreSQL
+```
+
+---
+
+## 15. VMware虚拟机 proxy 配置
+
+鉴于我们在使用虚拟机时常常会因为网络问题无法访问：github.com 等网站，或者就是 npm 等包，curl 无法访问外网。而本项目选择使用 SSH 连接虚拟机进行开发，就必须要让虚拟机能够访问外网，这里给出在代理工具 Clash 的配置方法。
+
+### 1. 不采用 TUN 的手动配置
+
+![Clash UI](./img/clash.png)
+
+找到 Port ，把更新关掉。
+打开 Allow LAN ，点击三角图标，记住 WLAN 的 ip 地址。后面用 NAT 共享这个 ip 进行转发。
+查看 Profiles 的配置 .yalm 文件看是否 `allow-lan = true` ;
+
+---
+
+VMware 选择 NAT 连接。
+在终端输入：
+
+```bash
+sudo nano /etc/environment
+```
+
+把下面配置写入
+
+```text
+# 不要带引号和空格
+https_proxy=http://your_ip_address:port
+HTTPS_PROXY=http://your_ip_address:port
+HTTP_PROXY=http://your_ip_address:port
+http_proxy=http://your_ip_address:port
+
+# 在行前 backspace 后不要出现
+HTTP_PROXY=http://your_ip_address:port HTTPS_PROXY=http://your_ip_address:port
+```
+
+然后退出当前窗口，重新登录
+
+```bash
+exit
+```
+
+执行
+
+```bash
+env | grep -i proxy
+```
+
+成功会输出刚才写入的内容。
+最后测试一下 github.com
+
+```bash
+curl -I https://github.com
+```
