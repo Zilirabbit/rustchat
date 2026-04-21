@@ -206,21 +206,78 @@ nvm install 18
 ## 8. 安装 PostgreSQL
 
 ```bash
-sudo apt install postgresql postgresql-contrib
+sudo apt update
+sudo apt install postgresql postgresql-contrib -y
 ```
 
 启动：
 
 ```bash
-sudo systemctl start postgresql
+sudo service postgresql start
+```
+
+开机自启：
+
+```bash
+sudo systemctl enable postgresql
+```
+
+进入数据库：
+
+```bash
+sudo -u postgres psql
 ```
 
 创建数据库：
 
 ```bash
-sudo -u postgres psql
 CREATE DATABASE rustchat;
+
+CREATE USER username WITH PASSWORD 'password';
+
+ALTER ROLE username SET client_encoding TO 'utf8';
+ALTER ROLE username SET default_transaction_isolation TO 'read committed';
+ALTER ROLE username SET timezone TO 'UTC';
+
+GRANT ALL PRIVILEGES ON DATABASE rustchat TO username;
+
+\q
 ```
+
+测试本机连接：
+
+```bash
+psql -h localhost -U username -d rustchat
+# 然后输入用户密码
+```
+
+修改配置文件，在宿主机连接：
+
+- 修改监听地址
+
+```bash
+sudo nano /etc/postgresql/*/main/postgresql.conf
+# 找到
+#listen_addresses = 'localhost'
+# 改成
+listen_addresses = '*'
+```
+
+- 修改访问控制
+
+```bash
+sudo nano /etc/postgresql/*/main/pg_hba.conf
+# 在最后加一行加上，仅允许本机连接访问
+host    all    all    192.168.0.0/16    md5
+```
+
+重启 PostgreSQL：
+
+```bash
+sudo service postgresql restart
+```
+
+最后拿到虚拟机 ip 就可以在宿主机进行连接。
 
 ---
 

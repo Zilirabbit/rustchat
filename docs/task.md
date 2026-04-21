@@ -49,12 +49,12 @@
 
 ### 任务
 
-- [ ] 初始化 Rust 项目（cargo workspace 或单项目）
-- [ ] 建立基础目录结构（common / user / session / message / connection / storage）
-- [ ] 引入核心依赖（axum / tokio / sqlx / tracing / serde / jsonwebtoken）
-- [ ] 配置 `.env` 与示例配置文件
-- [ ] 建立基础启动入口 `main.rs`
-- [ ] 添加健康检查接口 `/health`
+- [x] 初始化 Rust 项目（cargo workspace 或单项目）
+- [x] 建立基础目录结构（common / user / session / message / connection / storage）
+- [x] 引入核心依赖（axum / tokio / sqlx / tracing / serde / jsonwebtoken）
+- [x] 配置 `.env` 与示例配置文件
+- [x] 建立基础启动入口 `main.rs`
+- [x] 添加健康检查接口 `/health`
 
 ### 输出物
 
