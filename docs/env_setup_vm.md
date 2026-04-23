@@ -368,7 +368,7 @@ HTTP_PROXY=http://your_ip_address:port HTTPS_PROXY=http://your_ip_address:port
 exit
 ```
 
-执行
+执行下面代码查看代理
 
 ```bash
 env | grep -i proxy
@@ -379,4 +379,65 @@ env | grep -i proxy
 
 ```bash
 curl -I https://github.com
+```
+
+### 补充：
+
+将下列写入 `/etc/environment` ，让本机和虚拟机内网地址不走代理。这样在测试后端 api 的时候不会走代理而导致失败。
+
+```bash
+NO_PROXY=127.0.0.1,localhost,192.168.221.131
+no_proxy=127.0.0.1,localhost,192.168.221.131
+```
+
+配置代理后测试
+
+```bash
+cargo run
+curl -v http://127.0.0.1:3000/health
+```
+
+输出： ip 是随便写的。
+
+```text
+rabbit@rustchat-server:~/rustchat-server$ curl -v http://127.0.0.1:3000/health
+* Uses proxy env variable http_proxy == 'http://172.21.71.1:7890'
+*   Trying 172.21.71.1:7890...
+* Connected to (nil) (172.21.71.1) port 7890 (#0)
+> GET http://127.0.0.1:3000/health HTTP/1.1
+> Host: 127.0.0.1:3000
+> User-Agent: curl/7.81.0
+> Accept: */*
+> Proxy-Connection: Keep-Alive
+>
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 502 Bad Gateway
+< Connection: keep-alive
+< Keep-Alive: timeout=4
+< Proxy-Connection: keep-alive
+< Content-Length: 0
+<
+* Connection #0 to host (nil) left intact
+```
+
+不走代理
+
+```text
+rabbit@rustchat-server:~$ curl -v http://127.0.0.1:3000/health
+* Uses proxy env variable no_proxy == '127.0.0.1,localhost,192.168.221.131'
+*   Trying 127.0.0.1:3000...
+* Connected to 127.0.0.1 (127.0.0.1) port 3000 (#0)
+> GET /health HTTP/1.1
+> Host: 127.0.0.1:3000
+> User-Agent: curl/7.81.0
+> Accept: */*
+>
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 200 OK
+< content-type: application/json
+< content-length: 66
+< date: Thu, 23 Apr 2026 15:02:46 GMT
+<
+* Connection #0 to host 127.0.0.1 left intact
+{"code":200,"message":"service is healthy","data":{"status":"ok"}}
 ```

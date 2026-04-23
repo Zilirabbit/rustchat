@@ -1,1 +1,6 @@
-//! User module placeholder for Phase 1 scaffolding.
+pub mod dto;
+pub mod handler;
+pub mod model;
+pub mod repo;
+pub mod routes;
+pub mod service;

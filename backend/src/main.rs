@@ -1,4 +1,5 @@
 mod app;
+mod auth;
 mod common;
 mod connection;
 mod message;
@@ -11,37 +12,38 @@ use std::net::SocketAddr;
 
 use app::AppState;
 use common::config::AppConfig;
+use common::error::AppResult;
+use common::logging;
 use router::create_router;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> AppResult<()> {
     dotenvy::dotenv().ok();
 
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
-    let config = AppConfig::from_env();
+    let config = AppConfig::from_env()?;
+    logging::init(&config.log_level);
     let state = AppState::build(config.clone()).await?;
 
-    if state.db.is_some() {
-        tracing::info!("database pool initialized");
+    if state.storage.is_some() {
+        tracing::info!("database pool initialized and migrations applied");
     } else {
         tracing::warn!("DATABASE_URL is not set; starting without database connectivity");
     }
 
     let app = create_router(state);
 
-    let addr: SocketAddr = format!("{}:{}", config.app_host, config.app_port).parse()?;
+    let addr: SocketAddr = format!("{}:{}", config.app_host, config.app_port)
+        .parse::<SocketAddr>()
+        .map_err(|error| anyhow::anyhow!(error))?;
 
     tracing::info!("server listening on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|error| anyhow::anyhow!(error))?;
+    axum::serve(listener, app)
+        .await
+        .map_err(|error| anyhow::anyhow!(error))?;
 
     Ok(())
 }

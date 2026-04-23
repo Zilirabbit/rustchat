@@ -1,18 +1,60 @@
-use crate::{common::config::AppConfig, storage::db::new_pool};
-use sqlx::PgPool;
+use std::sync::Arc;
+
+use crate::{
+    auth::jwt::JwtService,
+    common::{config::AppConfig, error::AppResult},
+    storage::Storage,
+    user::{
+        repo::PostgresUserRepository,
+        service::{UnavailableUserService, UserService, UserUseCase},
+    },
+};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: Option<PgPool>,
+    pub storage: Option<Storage>,
+    pub auth: AuthState,
+    pub user_service: Arc<dyn UserUseCase>,
+}
+
+#[derive(Clone)]
+pub struct AuthState {
+    pub jwt: JwtService,
 }
 
 impl AppState {
-    pub async fn build(config: AppConfig) -> Result<Self, sqlx::Error> {
-        let db = match config.database_url.as_deref() {
-            Some(database_url) => Some(new_pool(database_url).await?),
+    pub async fn build(config: AppConfig) -> AppResult<Self> {
+        let storage = match config.database.as_ref() {
+            Some(database_config) => Some(Storage::connect(database_config).await?),
             None => None,
         };
 
-        Ok(Self { db })
+        let jwt = JwtService::new(config.jwt.clone());
+        let user_service: Arc<dyn UserUseCase> = match storage.as_ref() {
+            Some(storage) => Arc::new(UserService::new(
+                PostgresUserRepository::new(storage.repository_context()),
+                jwt.clone(),
+            )),
+            None => Arc::new(UnavailableUserService),
+        };
+
+        Ok(Self {
+            storage,
+            auth: AuthState { jwt },
+            user_service,
+        })
+    }
+
+    #[cfg(test)]
+    pub fn new(
+        storage: Option<Storage>,
+        jwt: JwtService,
+        user_service: Arc<dyn UserUseCase>,
+    ) -> Self {
+        Self {
+            storage,
+            auth: AuthState { jwt },
+            user_service,
+        }
     }
 }
