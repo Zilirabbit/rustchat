@@ -1,0 +1,81 @@
+# Postman Collections
+
+当前目录拆成两份 collection：
+
+- `rustchat.postman_collection.json`
+  - 仅包含 HTTP 请求
+  - 已按 `System / Auth` 分组
+- `rustchat.websocket.postman_collection.json`
+  - 仅包含 WebSocket 请求
+  - 已按 `Connection` 分组
+
+这样拆分是为了兼容 Postman 对 WebSocket collection 的单独限制，避免把 HTTP 与 WebSocket 混在同一个 collection 后出现导入或使用异常。
+
+注意：
+
+- 如果直接导入 `rustchat.websocket.postman_collection.json` 后，界面仍显示普通 HTTP 的 `GET` 和 `Send`，而不是 WebSocket 的 `Connect`
+- 说明当前 Postman 没有把这条请求识别成真正的 WebSocket request
+- 这时不要继续用导入结果验证，请改为在 Postman 里手动新建 WebSocket request
+
+## 推荐导入方式
+
+1. 先导入 `rustchat.postman_collection.json`
+2. 跑通：
+   - `Register`
+   - `Login`
+3. 确认 `Login` 已把 JWT 自动写入 Postman 全局变量 `rustchat_token`
+4. 再导入 `rustchat.websocket.postman_collection.json`
+5. 根据环境修改：
+   - `base_url = http://127.0.0.1:3000` 或 `http://<vm-ip>:3000`
+   - `ws_base_url = 127.0.0.1:3000` 或 `<vm-ip>:3000`
+
+如果你没有先跑 `Login`，也可以手动设置一个 Postman 全局变量：
+
+- `rustchat_token = <jwt-token>`
+
+## WebSocket 验证建议
+
+- 推荐方式：手动新建 WebSocket request，而不是依赖 JSON 导入结果
+- 优先使用 `Connect With Query Token`
+- 连接成功后应先收到：
+
+```json
+{
+  "type": "connected",
+  "user_id": 1,
+  "username": "alice",
+  "connection_id": 1
+}
+```
+
+- 然后发送：
+
+```json
+{
+  "type": "ping"
+}
+```
+
+- 期望收到：
+
+```json
+{
+  "type": "pong"
+}
+```
+
+## 手动新建 WebSocket Request
+
+根据 Postman 官方文档，最稳的方式是：
+
+1. 点击 `New`
+2. 选择 `WebSocket`
+3. 输入：
+
+```text
+ws://<vm-ip>:3000/ws?token=<jwt-token>
+```
+
+4. 点击 `Connect`
+
+如果你看到的是 `Send`，不是 `Connect`，说明当前标签页仍然不是 WebSocket request。

@@ -267,12 +267,12 @@
 
 ### 任务
 
-- [ ] 建立 WebSocket 连接入口
-- [ ] WebSocket 握手时 JWT 鉴权
-- [ ] 维护 `user_id <-> connection` 映射
-- [ ] 实现断线清理
-- [ ] 定义基础 WS 消息协议
-- [ ] 可选：实现 heartbeat/ping-pong
+- [x] 建立 WebSocket 连接入口
+- [x] WebSocket 握手时 JWT 鉴权
+- [x] 维护 `user_id <-> connection` 映射
+- [x] 实现断线清理
+- [x] 定义基础 WS 消息协议
+- [x] 可选：实现 heartbeat/ping-pong
 
 ### 输出物
 

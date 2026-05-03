@@ -29,21 +29,33 @@
 
 如需导入 Postman，请使用：
 
-`docs/postman/rustchat.postman_collection.json`
+- `docs/postman/rustchat.postman_collection.json`
+- `docs/postman/rustchat.websocket.postman_collection.json`
 
 导入方式：
 
 1. 打开 Postman
 2. 点击 `Import`
-3. 选择 `docs/postman/rustchat.postman_collection.json`
-4. 导入后修改 collection 变量：
-   - `base_url`
-   - `token`
+3. 先导入 `docs/postman/rustchat.postman_collection.json`
+4. 再导入 `docs/postman/rustchat.websocket.postman_collection.json`
+5. 导入后修改 collection 变量：
+   - HTTP collection：`base_url`
+   - WebSocket collection：`ws_base_url`
+6. 先执行 `POST /api/login`
+7. `Login` 会自动把 JWT 写入 Postman 全局变量 `rustchat_token`
 
 建议：
 
 - `base_url = http://127.0.0.1:3000`
+- `ws_base_url = 127.0.0.1:3000`
 - 远程虚拟机联调时改为 `http://<vm-ip>:3000`
+  - WebSocket 同时改为 `<vm-ip>:3000`
+
+说明：
+
+- 如果导入 WebSocket collection 后，请求页仍显示普通 HTTP 的 `Send` 按钮，而不是 WebSocket 的 `Connect`
+- 说明该请求在当前 Postman 中没有被识别为真正的 WebSocket request
+- 此时建议直接在 Postman 中通过 `New -> WebSocket` 手动创建连接请求，再保存到本地 collection
 
 ## 3. 认证说明
 
@@ -256,6 +268,79 @@ curl http://127.0.0.1:3000/api/me \
 - `401`：token 非法或已过期
 - `401`：鉴权通过但用户不存在
 - `503`：数据库未配置
+
+### 4.6 WebSocket 连接
+
+- 方法：`GET`
+- 路径：`/ws`
+- 协议：`WebSocket`
+- 鉴权：是
+
+握手鉴权支持两种方式：
+
+- `Authorization: Bearer <token>`
+- 查询参数：`/ws?token=<token>`
+
+说明：
+
+- 若请求头中存在 `Authorization`，则优先按 Bearer Token 解析
+- 若请求头中没有 `Authorization`，则回退到 `token` 查询参数
+- 握手成功后，服务端会先主动推送一条 `connected` 事件
+
+浏览器示例：
+
+```js
+const socket = new WebSocket("ws://127.0.0.1:3000/ws?token=<jwt-token>");
+```
+
+非浏览器客户端示例：
+
+```text
+GET /ws
+Authorization: Bearer <jwt-token>
+```
+
+服务端首条消息示例：
+
+```json
+{
+  "type": "connected",
+  "user_id": 1,
+  "username": "alice",
+  "connection_id": 1
+}
+```
+
+客户端可发送的基础协议：
+
+```json
+{
+  "type": "ping"
+}
+```
+
+服务端响应：
+
+```json
+{
+  "type": "pong"
+}
+```
+
+非法消息响应示例：
+
+```json
+{
+  "type": "error",
+  "message": "invalid websocket message"
+}
+```
+
+可能错误：
+
+- `401`：缺少 token
+- `401`：token 非法或已过期
+- `400` / 握手失败：请求头不满足 WebSocket upgrade 要求
 
 ## 5. 建议测试顺序
 

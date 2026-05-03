@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::{
     auth::jwt::JwtService,
     common::{config::AppConfig, error::AppResult},
+    connection::manager::ConnectionManager,
     storage::Storage,
     user::{
         repo::PostgresUserRepository,
@@ -14,6 +15,7 @@ use crate::{
 pub struct AppState {
     pub storage: Option<Storage>,
     pub auth: AuthState,
+    pub connections: ConnectionManager,
     pub user_service: Arc<dyn UserUseCase>,
 }
 
@@ -41,6 +43,7 @@ impl AppState {
         Ok(Self {
             storage,
             auth: AuthState { jwt },
+            connections: ConnectionManager::new(),
             user_service,
         })
     }
@@ -54,6 +57,7 @@ impl AppState {
         Self {
             storage,
             auth: AuthState { jwt },
+            connections: ConnectionManager::new(),
             user_service,
         }
     }

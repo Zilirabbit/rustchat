@@ -1,0 +1,115 @@
+{
+  "info": {
+    "_postman_id": "3c9f63c9-1aa0-4f42-9363-c522835ef592",
+    "name": "RustChat WebSocket",
+    "description": "RustChat WebSocket requests. Import this collection separately from the HTTP collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "ws_base_url",
+      "value": "127.0.0.1:3000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Connection",
+      "description": "WebSocket handshake scenarios for the RustChat connection layer.",
+      "item": [
+        {
+          "name": "Connect With Query Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Recommended for browser-style validation in Postman. After connect, expect a `connected` event.",
+            "url": {
+              "raw": "ws://{{ws_base_url}}/ws?token={{rustchat_token}}",
+              "protocol": "ws",
+              "host": [
+                "{{ws_base_url}}"
+              ],
+              "path": [
+                "ws"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{rustchat_token}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Connect With Header Token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{rustchat_token}}"
+              }
+            ],
+            "description": "Validates the `Authorization: Bearer <token>` handshake path.",
+            "url": {
+              "raw": "ws://{{ws_base_url}}/ws",
+              "protocol": "ws",
+              "host": [
+                "{{ws_base_url}}"
+              ],
+              "path": [
+                "ws"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Connect Without Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Expected to fail the handshake because no token is provided.",
+            "url": {
+              "raw": "ws://{{ws_base_url}}/ws",
+              "protocol": "ws",
+              "host": [
+                "{{ws_base_url}}"
+              ],
+              "path": [
+                "ws"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Connect With Invalid Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Expected to fail the handshake because the token is invalid.",
+            "url": {
+              "raw": "ws://{{ws_base_url}}/ws?token=invalid-token",
+              "protocol": "ws",
+              "host": [
+                "{{ws_base_url}}"
+              ],
+              "path": [
+                "ws"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "invalid-token"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
