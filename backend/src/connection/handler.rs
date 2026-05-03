@@ -12,6 +12,7 @@ use crate::{
     app::AppState,
     auth::types::CurrentUser,
     common::error::{AppError, AppResult},
+    message::dto::SendMessageRequest,
     middleware::auth::extract_bearer_token,
 };
 
@@ -34,9 +35,8 @@ pub async fn ws_handler(
     let token = extract_ws_token(&headers, query.token.as_deref())?;
     let claims = state.auth.jwt.decode_token(&token)?;
     let current_user = CurrentUser::from(claims);
-    let connection_manager = state.connections.clone();
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(connection_manager, current_user, socket)))
+    Ok(ws.on_upgrade(move |socket| handle_socket(state, current_user, socket)))
 }
 
 fn extract_ws_token(headers: &HeaderMap, query_token: Option<&str>) -> AppResult<String> {
@@ -52,11 +52,8 @@ fn extract_ws_token(headers: &HeaderMap, query_token: Option<&str>) -> AppResult
     Ok(token.to_string())
 }
 
-async fn handle_socket(
-    connection_manager: ConnectionManager,
-    current_user: CurrentUser,
-    mut socket: WebSocket,
-) {
+async fn handle_socket(state: AppState, current_user: CurrentUser, mut socket: WebSocket) {
+    let connection_manager: ConnectionManager = state.connections.clone();
     let registered = connection_manager.register(current_user.user_id).await;
     let connection_id = registered.connection_id;
     let outbound_sender = registered.sender();
@@ -93,7 +90,7 @@ async fn handle_socket(
             inbound_message = socket.recv() => {
                 match inbound_message {
                     Some(Ok(message)) => {
-                        if !handle_inbound_message(&outbound_sender, message).await {
+                        if !handle_inbound_message(&state, &current_user, &outbound_sender, message).await {
                             break;
                         }
                     }
@@ -124,12 +121,14 @@ async fn handle_socket(
 }
 
 async fn handle_inbound_message(
+    state: &AppState,
+    current_user: &CurrentUser,
     outbound_sender: &tokio::sync::mpsc::UnboundedSender<Message>,
     message: Message,
 ) -> bool {
     match message {
         Message::Text(payload) => match parse_client_event(payload.as_ref()) {
-            Ok(ClientEvent::Ping) => enqueue_event(outbound_sender, &ServerEvent::Pong),
+            Ok(event) => process_client_event(state, current_user, outbound_sender, event).await,
             Err(_) => enqueue_event(
                 outbound_sender,
                 &ServerEvent::Error {
@@ -146,6 +145,66 @@ async fn handle_inbound_message(
         Message::Ping(payload) => outbound_sender.send(Message::Pong(payload)).is_ok(),
         Message::Pong(_) => true,
         Message::Close(_) => false,
+    }
+}
+
+async fn process_client_event(
+    state: &AppState,
+    current_user: &CurrentUser,
+    outbound_sender: &tokio::sync::mpsc::UnboundedSender<Message>,
+    event: ClientEvent,
+) -> bool {
+    match event {
+        ClientEvent::Ping => enqueue_event(outbound_sender, &ServerEvent::Pong),
+        ClientEvent::SendMessage {
+            session_id,
+            content,
+        } => match state
+            .message_service
+            .send_text_message(
+                current_user,
+                SendMessageRequest {
+                    session_id,
+                    content,
+                },
+            )
+            .await
+        {
+            Ok(result) => {
+                let sent_ok = enqueue_event(
+                    outbound_sender,
+                    &ServerEvent::MessageSent {
+                        message: result.message.clone(),
+                    },
+                );
+
+                if !state
+                    .connections
+                    .send_to_user(
+                        result.recipient_user_id,
+                        &ServerEvent::ReceiveMessage {
+                            message: result.message,
+                        },
+                    )
+                    .await
+                {
+                    tracing::debug!(
+                        sender_id = current_user.user_id,
+                        recipient_user_id = result.recipient_user_id,
+                        session_id,
+                        "recipient is offline or websocket push failed"
+                    );
+                }
+
+                sent_ok
+            }
+            Err(error) => enqueue_event(
+                outbound_sender,
+                &ServerEvent::Error {
+                    message: error.to_string(),
+                },
+            ),
+        },
     }
 }
 
@@ -166,16 +225,25 @@ fn enqueue_event(
 mod tests {
     use std::sync::Arc;
 
+    use async_trait::async_trait;
     use axum::{Router, http::StatusCode, routing::get};
+    use serde_json::Value;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpStream,
         task::JoinHandle,
     };
 
-    use super::ws_handler;
+    use super::{process_client_event, ws_handler};
     use crate::{
-        app::AppState, auth::jwt::JwtService, common::config::JwtConfig,
+        app::AppState,
+        auth::{jwt::JwtService, types::CurrentUser},
+        common::{config::JwtConfig, error::AppResult},
+        message::{
+            dto::{ChatMessagePayload, SendMessageRequest},
+            service::{MessageSendResult, MessageUseCase},
+        },
+        session::service::UnavailableSessionService,
         user::service::UnavailableUserService,
     };
 
@@ -189,6 +257,29 @@ mod tests {
             }),
             Arc::new(UnavailableUserService),
         )
+    }
+
+    struct StubMessageService;
+
+    #[async_trait]
+    impl MessageUseCase for StubMessageService {
+        async fn send_text_message(
+            &self,
+            current_user: &CurrentUser,
+            request: SendMessageRequest,
+        ) -> AppResult<MessageSendResult> {
+            Ok(MessageSendResult {
+                recipient_user_id: 8,
+                message: ChatMessagePayload {
+                    message_id: 1,
+                    session_id: request.session_id,
+                    sender_id: current_user.user_id,
+                    sender_username: current_user.username.clone(),
+                    content: request.content,
+                    created_at: "2026-05-03 12:00:00+00".to_string(),
+                },
+            })
+        }
     }
 
     async fn spawn_test_server(state: AppState) -> (std::net::SocketAddr, JoinHandle<()>) {
@@ -266,5 +357,58 @@ mod tests {
         server.abort();
 
         assert!(response.starts_with(&format!("HTTP/1.1 {}", StatusCode::UNAUTHORIZED.as_u16())));
+    }
+
+    #[tokio::test]
+    async fn send_message_event_returns_ack_and_pushes_recipient_event() {
+        let state = AppState::new_with_services(
+            None,
+            JwtService::new(JwtConfig {
+                secret: "connection-send-message-test-secret".to_string(),
+                expires_in_secs: 3_600,
+                issuer: "rustchat-test".to_string(),
+            }),
+            Arc::new(UnavailableUserService),
+            Arc::new(UnavailableSessionService),
+            Arc::new(StubMessageService),
+        );
+
+        let sender_connection = state.connections.register(7).await;
+        let sender_outbound = sender_connection.sender();
+        let mut sender_receiver = sender_connection.into_receiver();
+
+        let recipient_connection = state.connections.register(8).await;
+        let mut recipient_receiver = recipient_connection.into_receiver();
+
+        let handled = process_client_event(
+            &state,
+            &CurrentUser {
+                user_id: 7,
+                username: "alice".to_string(),
+            },
+            &sender_outbound,
+            crate::connection::protocol::ClientEvent::SendMessage {
+                session_id: 12,
+                content: "hello".to_string(),
+            },
+        )
+        .await;
+
+        assert!(handled);
+
+        let sender_payload = sender_receiver.recv().await.unwrap().into_text().unwrap();
+        let sender_body: Value = serde_json::from_str(&sender_payload).unwrap();
+        assert_eq!(sender_body["type"], "message_sent");
+        assert_eq!(sender_body["message"]["content"], "hello");
+
+        let recipient_payload = recipient_receiver
+            .recv()
+            .await
+            .unwrap()
+            .into_text()
+            .unwrap();
+        let recipient_body: Value = serde_json::from_str(&recipient_payload).unwrap();
+        assert_eq!(recipient_body["type"], "receive_message");
+        assert_eq!(recipient_body["message"]["sender_id"], 7);
     }
 }

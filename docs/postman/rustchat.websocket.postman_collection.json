@@ -110,6 +110,62 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Private Chat",
+      "description": "Two-user WebSocket requests for direct-message testing.",
+      "item": [
+        {
+          "name": "Alice",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Connect as Alice with `rustchat_alice_token`. After `Create Private Session Alice -> Bob`, send a message like: {\"type\":\"send_message\",\"session_id\":{{rustchat_private_session_id}},\"content\":\"hello\"}",
+            "url": {
+              "raw": "ws://{{ws_base_url}}/ws?token={{rustchat_alice_token}}",
+              "protocol": "ws",
+              "host": [
+                "{{ws_base_url}}"
+              ],
+              "path": [
+                "ws"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{rustchat_alice_token}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Bob",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Connect as Bob with `rustchat_bob_token`. Keep this tab connected and wait for `receive_message` push events.",
+            "url": {
+              "raw": "ws://{{ws_base_url}}/ws?token={{rustchat_bob_token}}",
+              "protocol": "ws",
+              "host": [
+                "{{ws_base_url}}"
+              ],
+              "path": [
+                "ws"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{rustchat_bob_token}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

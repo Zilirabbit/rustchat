@@ -30,6 +30,9 @@ pub enum AppError {
     Unauthorized(String),
 
     #[error("{0}")]
+    Forbidden(String),
+
+    #[error("{0}")]
     Conflict(String),
 
     #[error("database is not configured")]
@@ -49,6 +52,7 @@ impl AppError {
             AppError::Config(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::DbNotConfigured => StatusCode::SERVICE_UNAVAILABLE,
         }

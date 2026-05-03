@@ -9,7 +9,7 @@ use crate::{
     },
     connection,
     middleware::logging,
-    user,
+    session, user,
 };
 
 pub fn create_router(state: AppState) -> Router {
@@ -17,6 +17,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/db/ping", get(db_ping))
         .merge(connection::router())
+        .merge(session::routes::router(state.clone()))
         .merge(user::routes::router(state.clone()))
         .layer(middleware::from_fn(logging::log_request))
         .with_state(state)

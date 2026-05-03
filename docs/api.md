@@ -269,7 +269,65 @@ curl http://127.0.0.1:3000/api/me \
 - `401`：鉴权通过但用户不存在
 - `503`：数据库未配置
 
-### 4.6 WebSocket 连接
+### 4.6 创建私聊会话
+
+- 方法：`POST`
+- 路径：`/api/sessions/private`
+- 鉴权：是
+- `Content-Type`：`application/json`
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+请求体：
+
+```json
+{
+  "target_user_id": 2
+}
+```
+
+说明：
+
+- 如果当前用户和目标用户之间已存在私聊，则直接返回已有会话
+- 如果不存在，则新建一条 `private` 会话和两条成员关系
+
+示例请求：
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/sessions/private \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"target_user_id":2}'
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "private session ready",
+  "data": {
+    "session_id": 12,
+    "session_type": "private",
+    "peer_user_id": 2,
+    "created_at": "2026-05-03 12:00:00+00",
+    "created": true
+  }
+}
+```
+
+可能错误：
+
+- `400`：目标用户不存在
+- `400`：不能给自己创建私聊
+- `401`：缺少 token 或 token 非法
+- `503`：数据库未配置
+
+### 4.7 WebSocket 连接
 
 - 方法：`GET`
 - 路径：`/ws`
@@ -311,11 +369,19 @@ Authorization: Bearer <jwt-token>
 }
 ```
 
-客户端可发送的基础协议：
+客户端可发送的协议：
 
 ```json
 {
   "type": "ping"
+}
+```
+
+```json
+{
+  "type": "send_message",
+  "session_id": 12,
+  "content": "hello"
 }
 ```
 
@@ -324,6 +390,38 @@ Authorization: Bearer <jwt-token>
 ```json
 {
   "type": "pong"
+}
+```
+
+发送成功后，发送方会收到确认：
+
+```json
+{
+  "type": "message_sent",
+  "message": {
+    "message_id": 1,
+    "session_id": 12,
+    "sender_id": 1,
+    "sender_username": "alice",
+    "content": "hello",
+    "created_at": "2026-05-03 12:00:00+00"
+  }
+}
+```
+
+若接收方在线，接收方会收到实时推送：
+
+```json
+{
+  "type": "receive_message",
+  "message": {
+    "message_id": 1,
+    "session_id": 12,
+    "sender_id": 1,
+    "sender_username": "alice",
+    "content": "hello",
+    "created_at": "2026-05-03 12:00:00+00"
+  }
 }
 ```
 
@@ -340,6 +438,7 @@ Authorization: Bearer <jwt-token>
 
 - `401`：缺少 token
 - `401`：token 非法或已过期
+- `403`：发送者不是该私聊成员
 - `400` / 握手失败：请求头不满足 WebSocket upgrade 要求
 
 ## 5. 建议测试顺序
@@ -352,8 +451,11 @@ Authorization: Bearer <jwt-token>
 4. `POST /api/login`
 5. 将 `data.token` 写入 `token` 变量
 6. `GET /api/me`
-7. 删除 `Authorization` 再测一次 `/api/me`
-8. 将 token 改成非法值再测一次 `/api/me`
+7. `POST /api/sessions/private`
+8. 连接 `GET /ws?token=<jwt>`
+9. 发送 `{"type":"send_message","session_id":<id>,"content":"hello"}`
+10. 删除 `Authorization` 再测一次 `/api/me`
+11. 将 token 改成非法值再测一次 `/api/me`
 
 ## 6. 维护约定
 

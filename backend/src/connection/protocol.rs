@@ -1,10 +1,13 @@
 use axum::extract::ws::Message;
 use serde::{Deserialize, Serialize};
 
+use crate::message::dto::ChatMessagePayload;
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientEvent {
     Ping,
+    SendMessage { session_id: i64, content: String },
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -16,6 +19,12 @@ pub enum ServerEvent {
         connection_id: u64,
     },
     Pong,
+    MessageSent {
+        message: ChatMessagePayload,
+    },
+    ReceiveMessage {
+        message: ChatMessagePayload,
+    },
     Error {
         message: String,
     },
@@ -32,11 +41,27 @@ pub fn server_event_message(event: &ServerEvent) -> Result<Message, serde_json::
 #[cfg(test)]
 mod tests {
     use super::{ClientEvent, ServerEvent, parse_client_event, server_event_message};
+    use crate::message::dto::ChatMessagePayload;
 
     #[test]
     fn ping_event_can_be_parsed() {
         let event = parse_client_event(r#"{"type":"ping"}"#).unwrap();
         assert_eq!(event, ClientEvent::Ping);
+    }
+
+    #[test]
+    fn send_message_event_can_be_parsed() {
+        let event =
+            parse_client_event(r#"{"type":"send_message","session_id":12,"content":"hello"}"#)
+                .unwrap();
+
+        assert_eq!(
+            event,
+            ClientEvent::SendMessage {
+                session_id: 12,
+                content: "hello".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -51,5 +76,24 @@ mod tests {
         let text = message.into_text().unwrap();
         assert!(text.contains(r#""type":"connected""#));
         assert!(text.contains(r#""connection_id":99"#));
+    }
+
+    #[test]
+    fn receive_message_event_uses_snake_case_protocol() {
+        let message = server_event_message(&ServerEvent::ReceiveMessage {
+            message: ChatMessagePayload {
+                message_id: 3,
+                session_id: 12,
+                sender_id: 7,
+                sender_username: "alice".to_string(),
+                content: "hello".to_string(),
+                created_at: "2026-05-03 12:00:00+00".to_string(),
+            },
+        })
+        .unwrap();
+
+        let text = message.into_text().unwrap();
+        assert!(text.contains(r#""type":"receive_message""#));
+        assert!(text.contains(r#""message_id":3"#));
     }
 }
