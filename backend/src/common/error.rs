@@ -60,6 +60,12 @@ impl IntoResponse for AppError {
         let status = self.status_code();
         let message = self.to_string();
 
+        if status.is_server_error() {
+            tracing::error!(status = status.as_u16(), message = %message, "request failed");
+        } else if status.is_client_error() {
+            tracing::warn!(status = status.as_u16(), message = %message, "request rejected");
+        }
+
         let body = Json(ApiResponse::<()> {
             code: status.as_u16(),
             message,

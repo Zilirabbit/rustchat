@@ -3,6 +3,7 @@ mod auth;
 mod common;
 mod connection;
 mod message;
+mod middleware;
 mod router;
 mod session;
 mod storage;

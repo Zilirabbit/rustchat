@@ -1,14 +1,6 @@
-use axum::{
-    extract::FromRequestParts,
-    http::{HeaderMap, header, request::Parts},
-};
+use axum::{extract::FromRequestParts, http::request::Parts};
 
-use crate::{
-    app::AppState,
-    common::error::{AppError, AppResult},
-};
-
-use super::jwt::AuthClaims;
+use crate::{app::AppState, common::error::AppError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CurrentUser {
@@ -16,8 +8,8 @@ pub struct CurrentUser {
     pub username: String,
 }
 
-impl From<AuthClaims> for CurrentUser {
-    fn from(claims: AuthClaims) -> Self {
+impl From<super::jwt::AuthClaims> for CurrentUser {
+    fn from(claims: super::jwt::AuthClaims) -> Self {
         Self {
             user_id: claims.sub,
             username: claims.username,
@@ -30,53 +22,75 @@ impl FromRequestParts<AppState> for CurrentUser {
 
     async fn from_request_parts(
         parts: &mut Parts,
-        state: &AppState,
+        _state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let token = extract_bearer_token(&parts.headers)?;
-        let claims = state.auth.jwt.decode_token(&token)?;
-        Ok(claims.into())
+        parts
+            .extensions
+            .get::<CurrentUser>()
+            .cloned()
+            .ok_or_else(|| AppError::Unauthorized("authentication context missing".to_string()))
     }
-}
-
-fn extract_bearer_token(headers: &HeaderMap) -> AppResult<String> {
-    let header_value = headers
-        .get(header::AUTHORIZATION)
-        .ok_or_else(|| AppError::Unauthorized("missing authorization header".to_string()))?;
-
-    let header_value = header_value
-        .to_str()
-        .map_err(|_| AppError::Unauthorized("invalid authorization header".to_string()))?;
-
-    let token = header_value
-        .strip_prefix("Bearer ")
-        .or_else(|| header_value.strip_prefix("bearer "))
-        .ok_or_else(|| AppError::Unauthorized("invalid authorization header".to_string()))?;
-
-    let token = token.trim();
-    if token.is_empty() {
-        return Err(AppError::Unauthorized(
-            "invalid authorization header".to_string(),
-        ));
-    }
-
-    Ok(token.to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use axum::http::{HeaderMap, HeaderValue, header};
+    use std::sync::Arc;
 
-    use super::extract_bearer_token;
+    use axum::{
+        extract::FromRequestParts,
+        http::{Request, request::Parts},
+    };
 
-    #[test]
-    fn bearer_token_is_extracted() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::AUTHORIZATION,
-            HeaderValue::from_static("Bearer hello-world"),
-        );
+    use super::CurrentUser;
+    use crate::{
+        app::AppState, auth::jwt::JwtService, common::config::JwtConfig,
+        user::service::UnavailableUserService,
+    };
 
-        let token = extract_bearer_token(&headers).unwrap();
-        assert_eq!(token, "hello-world");
+    fn test_state() -> AppState {
+        AppState::new(
+            None,
+            JwtService::new(JwtConfig {
+                secret: "auth-types-test-secret".to_string(),
+                expires_in_secs: 3_600,
+                issuer: "rustchat-test".to_string(),
+            }),
+            Arc::new(UnavailableUserService),
+        )
+    }
+
+    fn empty_parts() -> Parts {
+        let (parts, _) = Request::builder()
+            .uri("/api/me")
+            .body(())
+            .unwrap()
+            .into_parts();
+        parts
+    }
+
+    #[tokio::test]
+    async fn current_user_is_loaded_from_request_extensions() {
+        let mut parts = empty_parts();
+        parts.extensions.insert(CurrentUser {
+            user_id: 42,
+            username: "alice".to_string(),
+        });
+
+        let current_user = CurrentUser::from_request_parts(&mut parts, &test_state())
+            .await
+            .unwrap();
+
+        assert_eq!(current_user.user_id, 42);
+        assert_eq!(current_user.username, "alice");
+    }
+
+    #[tokio::test]
+    async fn missing_current_user_extension_is_rejected() {
+        let mut parts = empty_parts();
+        let error = CurrentUser::from_request_parts(&mut parts, &test_state())
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::UNAUTHORIZED);
     }
 }

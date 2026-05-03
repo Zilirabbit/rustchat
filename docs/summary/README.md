@@ -20,3 +20,7 @@ v0.2.0-phase1-common.md
 ## 当前记录
 
 - [v0.1.0 - Phase 1 - 项目初始化](./v0.1.0-phase1-project-init.md)
+- [v0.1.0 - Phase 1 - common 基础模块](./v0.1.0-phase1-common-module.md)
+- [v0.1.0 - Phase 1 - storage 数据库模块](./v0.1.0-phase1-storage-module.md)
+- [v0.1.0 - Phase 1 - 数据库表设计](./v0.1.0-phase1-db-schema.md)
+- [v0.1.0 - Phase 1 - middleware 中间件](./v0.1.0-phase1-middleware.md)

@@ -1,17 +1,21 @@
 use axum::{
-    Router,
+    Router, middleware,
     routing::{get, post},
 };
 
-use crate::app::AppState;
+use crate::{app::AppState, middleware::auth};
 
 use super::handler;
 
-pub fn router() -> Router<AppState> {
+pub fn router(state: AppState) -> Router<AppState> {
+    let protected_routes = Router::new()
+        .route("/api/me", get(handler::me))
+        .route_layer(middleware::from_fn_with_state(state, auth::require_auth));
+
     Router::new()
         .route("/api/register", post(handler::register))
         .route("/api/login", post(handler::login))
-        .route("/api/me", get(handler::me))
+        .merge(protected_routes)
 }
 
 #[cfg(test)]
@@ -85,8 +89,9 @@ mod tests {
 
     #[tokio::test]
     async fn register_endpoint_returns_user_profile() {
-        let response = router()
-            .with_state(test_state())
+        let state = test_state();
+        let response = router(state.clone())
+            .with_state(state)
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -115,8 +120,9 @@ mod tests {
 
     #[tokio::test]
     async fn login_endpoint_returns_token() {
-        let response = router()
-            .with_state(test_state())
+        let state = test_state();
+        let response = router(state.clone())
+            .with_state(state)
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -147,9 +153,10 @@ mod tests {
     async fn me_endpoint_returns_current_user() {
         let jwt = test_jwt_service();
         let token = jwt.issue_token(7, "alice").unwrap();
+        let state = AppState::new(None, jwt, Arc::new(StubUserService));
 
-        let response = router()
-            .with_state(AppState::new(None, jwt, Arc::new(StubUserService)))
+        let response = router(state.clone())
+            .with_state(state)
             .oneshot(
                 Request::builder()
                     .uri("/api/me")
@@ -170,11 +177,30 @@ mod tests {
 
     #[tokio::test]
     async fn me_endpoint_rejects_missing_authorization_header() {
-        let response = router()
-            .with_state(test_state())
+        let state = test_state();
+        let response = router(state.clone())
+            .with_state(state)
             .oneshot(
                 Request::builder()
                     .uri("/api/me")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn me_endpoint_rejects_invalid_token() {
+        let state = test_state();
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/me")
+                    .header(header::AUTHORIZATION, "Bearer invalid-token")
                     .body(Body::empty())
                     .unwrap(),
             )

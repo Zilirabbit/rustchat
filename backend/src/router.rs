@@ -1,4 +1,4 @@
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{Json, Router, extract::State, middleware, routing::get};
 use serde::Serialize;
 
 use crate::{
@@ -7,6 +7,7 @@ use crate::{
         error::AppError,
         response::{ApiResponse, ok},
     },
+    middleware::logging,
     user,
 };
 
@@ -14,7 +15,8 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/db/ping", get(db_ping))
-        .merge(user::routes::router())
+        .merge(user::routes::router(state.clone()))
+        .layer(middleware::from_fn(logging::log_request))
         .with_state(state)
 }
 
