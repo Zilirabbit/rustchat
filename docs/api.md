@@ -327,7 +327,146 @@ curl -X POST http://127.0.0.1:3000/api/sessions/private \
 - `401`：缺少 token 或 token 非法
 - `503`：数据库未配置
 
-### 4.7 WebSocket 连接
+### 4.7 获取会话列表
+
+- 方法：`GET`
+- 路径：`/api/conversations`
+- 鉴权：是
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+说明：
+
+- 仅返回当前用户已加入的会话
+- 按最近消息时间倒序排列，无消息的会话排在最后
+- `private` 会话的 `session_name` 为“对方用户名”
+- `unread_count` 只统计“当前用户未读且不是自己发送”的消息
+
+示例请求：
+
+```bash
+curl http://127.0.0.1:3000/api/conversations \
+  -H "Authorization: Bearer <token>"
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "conversations fetched",
+  "data": [
+    {
+      "session_id": 12,
+      "session_type": "private",
+      "session_name": "bob",
+      "last_message": "hello",
+      "last_message_time": "2026-05-03 12:00:00+00",
+      "unread_count": 3
+    },
+    {
+      "session_id": 7,
+      "session_type": "group",
+      "session_name": "team",
+      "last_message": null,
+      "last_message_time": null,
+      "unread_count": 0
+    }
+  ]
+}
+```
+
+可能错误：
+
+- `401`：缺少 token 或 token 非法
+- `503`：数据库未配置
+
+### 4.8 查询历史消息
+
+- 方法：`GET`
+- 路径：`/api/messages`
+- 鉴权：是
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+查询参数：
+
+- `session_id`：必填，会话 ID，必须为正整数
+- `limit`：必填，单次返回数量，范围 `1~50`
+- `before_message_id`：选填，游标；传入后只返回 `message_id < before_message_id` 的更早消息
+
+说明：
+
+- 仅会话成员可查询该会话历史消息
+- 返回顺序固定为 `message_id` 倒序，即最新消息在前
+- 若 `has_more = true`，下一页可继续传 `next_before_message_id`
+
+示例请求：
+
+```bash
+curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20" \
+  -H "Authorization: Bearer <token>"
+```
+
+继续查询更早消息：
+
+```bash
+curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_id=88" \
+  -H "Authorization: Bearer <token>"
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "history messages fetched",
+  "data": {
+    "session_id": 12,
+    "limit": 20,
+    "before_message_id": null,
+    "next_before_message_id": 88,
+    "has_more": true,
+    "messages": [
+      {
+        "message_id": 90,
+        "session_id": 12,
+        "sender_id": 1,
+        "sender_username": "alice",
+        "message_type": "text",
+        "content": "hello",
+        "created_at": "2026-05-07 12:00:00+00"
+      },
+      {
+        "message_id": 88,
+        "session_id": 12,
+        "sender_id": 2,
+        "sender_username": "bob",
+        "message_type": "text",
+        "content": "hi",
+        "created_at": "2026-05-07 11:59:00+00"
+      }
+    ]
+  }
+}
+```
+
+可能错误：
+
+- `400`：缺少 `session_id / limit` 或分页参数不合法
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是该会话成员
+- `503`：数据库未配置
+
+### 4.9 WebSocket 连接
 
 - 方法：`GET`
 - 路径：`/ws`
@@ -454,8 +593,10 @@ Authorization: Bearer <jwt-token>
 7. `POST /api/sessions/private`
 8. 连接 `GET /ws?token=<jwt>`
 9. 发送 `{"type":"send_message","session_id":<id>,"content":"hello"}`
-10. 删除 `Authorization` 再测一次 `/api/me`
-11. 将 token 改成非法值再测一次 `/api/me`
+10. `GET /api/conversations`
+11. `GET /api/messages?session_id=<id>&limit=20`
+12. 删除 `Authorization` 再测一次 `/api/me`
+13. 将 token 改成非法值再测一次 `/api/me`
 
 ## 6. 维护约定
 

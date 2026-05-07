@@ -6,11 +6,15 @@ use crate::{
 };
 
 use super::{
-    dto::{ChatMessagePayload, SendMessageRequest},
+    dto::{
+        ChatMessagePayload, HistoryMessagesQuery, MessageListItem, MessageListPage,
+        SendMessageRequest,
+    },
     repo::MessageRepository,
 };
 
 const MAX_TEXT_MESSAGE_LENGTH: usize = 1_000;
+const MAX_HISTORY_MESSAGES_LIMIT: i64 = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageSendResult {
@@ -25,6 +29,11 @@ pub trait MessageUseCase: Send + Sync {
         current_user: &CurrentUser,
         request: SendMessageRequest,
     ) -> AppResult<MessageSendResult>;
+    async fn list_history_messages(
+        &self,
+        current_user: &CurrentUser,
+        query: HistoryMessagesQuery,
+    ) -> AppResult<MessageListPage>;
 }
 
 pub struct MessageService<R> {
@@ -91,6 +100,78 @@ where
             },
         })
     }
+
+    async fn list_history_messages(
+        &self,
+        current_user: &CurrentUser,
+        query: HistoryMessagesQuery,
+    ) -> AppResult<MessageListPage> {
+        if query.session_id <= 0 {
+            return Err(AppError::BadRequest(
+                "session id must be a positive integer".to_string(),
+            ));
+        }
+
+        if query.limit <= 0 || query.limit > MAX_HISTORY_MESSAGES_LIMIT {
+            return Err(AppError::BadRequest(format!(
+                "limit must be between 1 and {MAX_HISTORY_MESSAGES_LIMIT}"
+            )));
+        }
+
+        if query
+            .before_message_id
+            .is_some_and(|message_id| message_id <= 0)
+        {
+            return Err(AppError::BadRequest(
+                "before_message_id must be a positive integer".to_string(),
+            ));
+        }
+
+        if !self
+            .repo
+            .is_session_member(query.session_id, current_user.user_id)
+            .await?
+        {
+            return Err(AppError::Forbidden(
+                "you are not a member of this session".to_string(),
+            ));
+        }
+
+        let mut messages = self
+            .repo
+            .list_session_messages(query.session_id, query.before_message_id, query.limit + 1)
+            .await?;
+        let has_more = messages.len() as i64 > query.limit;
+        if has_more {
+            messages.truncate(query.limit as usize);
+        }
+
+        let next_before_message_id = if has_more {
+            messages.last().map(|message| message.message_id)
+        } else {
+            None
+        };
+
+        Ok(MessageListPage {
+            session_id: query.session_id,
+            limit: query.limit,
+            before_message_id: query.before_message_id,
+            next_before_message_id,
+            has_more,
+            messages: messages
+                .into_iter()
+                .map(|message| MessageListItem {
+                    message_id: message.message_id,
+                    session_id: message.session_id,
+                    sender_id: message.sender_id,
+                    sender_username: message.sender_username,
+                    message_type: message.message_type,
+                    content: message.content,
+                    created_at: message.created_at,
+                })
+                .collect(),
+        })
+    }
 }
 
 #[derive(Default)]
@@ -105,6 +186,14 @@ impl MessageUseCase for UnavailableMessageService {
     ) -> AppResult<MessageSendResult> {
         Err(AppError::DbNotConfigured)
     }
+
+    async fn list_history_messages(
+        &self,
+        _current_user: &CurrentUser,
+        _query: HistoryMessagesQuery,
+    ) -> AppResult<MessageListPage> {
+        Err(AppError::DbNotConfigured)
+    }
 }
 
 #[cfg(test)]
@@ -115,19 +204,31 @@ mod tests {
 
     use super::*;
     use crate::message::{
-        model::{PrivateSessionAccess, StoredMessage},
+        model::{HistoryMessage, PrivateSessionAccess, StoredMessage},
         repo::MessageRepository,
     };
 
     #[derive(Default)]
     struct FakeMessageRepository {
         access: Mutex<HashMap<(i64, i64), PrivateSessionAccess>>,
+        members: Mutex<HashMap<(i64, i64), bool>>,
+        history_messages: Mutex<HashMap<i64, Vec<HistoryMessage>>>,
         next_message_id: Mutex<i64>,
         stored_messages: Mutex<Vec<StoredMessage>>,
     }
 
     #[async_trait]
     impl MessageRepository for FakeMessageRepository {
+        async fn is_session_member(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
+            Ok(self
+                .members
+                .lock()
+                .unwrap()
+                .get(&(session_id, user_id))
+                .copied()
+                .unwrap_or(false))
+        }
+
         async fn get_private_session_access(
             &self,
             session_id: i64,
@@ -160,6 +261,29 @@ mod tests {
 
             self.stored_messages.lock().unwrap().push(message.clone());
             Ok(message)
+        }
+
+        async fn list_session_messages(
+            &self,
+            session_id: i64,
+            before_message_id: Option<i64>,
+            limit: i64,
+        ) -> AppResult<Vec<HistoryMessage>> {
+            Ok(self
+                .history_messages
+                .lock()
+                .unwrap()
+                .get(&session_id)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|message| {
+                    before_message_id
+                        .map(|before_message_id| message.message_id < before_message_id)
+                        .unwrap_or(true)
+                })
+                .take(limit as usize)
+                .collect())
         }
     }
 
@@ -231,5 +355,123 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(error.status_code(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn list_history_messages_returns_page_for_session_member() {
+        let repo = FakeMessageRepository::default();
+        repo.members.lock().unwrap().insert((12, 1), true);
+        repo.history_messages.lock().unwrap().insert(
+            12,
+            vec![
+                history_message(5, "latest"),
+                history_message(4, "middle"),
+                history_message(3, "older"),
+            ],
+        );
+
+        let service = MessageService::new(repo);
+        let page = service
+            .list_history_messages(
+                &current_user(),
+                HistoryMessagesQuery {
+                    session_id: 12,
+                    limit: 2,
+                    before_message_id: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(page.messages.len(), 2);
+        assert_eq!(page.messages[0].message_id, 5);
+        assert_eq!(page.messages[1].message_id, 4);
+        assert!(page.has_more);
+        assert_eq!(page.next_before_message_id, Some(4));
+    }
+
+    #[tokio::test]
+    async fn list_history_messages_applies_before_message_cursor() {
+        let repo = FakeMessageRepository::default();
+        repo.members.lock().unwrap().insert((12, 1), true);
+        repo.history_messages.lock().unwrap().insert(
+            12,
+            vec![
+                history_message(5, "latest"),
+                history_message(4, "middle"),
+                history_message(3, "older"),
+            ],
+        );
+
+        let service = MessageService::new(repo);
+        let page = service
+            .list_history_messages(
+                &current_user(),
+                HistoryMessagesQuery {
+                    session_id: 12,
+                    limit: 2,
+                    before_message_id: Some(5),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            page.messages
+                .iter()
+                .map(|message| message.message_id)
+                .collect::<Vec<_>>(),
+            vec![4, 3]
+        );
+        assert!(!page.has_more);
+        assert_eq!(page.next_before_message_id, None);
+    }
+
+    #[tokio::test]
+    async fn list_history_messages_rejects_non_member() {
+        let service = MessageService::new(FakeMessageRepository::default());
+        let error = service
+            .list_history_messages(
+                &current_user(),
+                HistoryMessagesQuery {
+                    session_id: 12,
+                    limit: 20,
+                    before_message_id: None,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn list_history_messages_rejects_invalid_limit() {
+        let service = MessageService::new(FakeMessageRepository::default());
+        let error = service
+            .list_history_messages(
+                &current_user(),
+                HistoryMessagesQuery {
+                    session_id: 12,
+                    limit: 51,
+                    before_message_id: None,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    fn history_message(message_id: i64, content: &str) -> HistoryMessage {
+        HistoryMessage {
+            message_id,
+            session_id: 12,
+            sender_id: 2,
+            sender_username: "bob".to_string(),
+            message_type: "text".to_string(),
+            content: content.to_string(),
+            created_at: "2026-05-03 12:00:00+00".to_string(),
+        }
     }
 }

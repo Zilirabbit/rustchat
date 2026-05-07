@@ -7,7 +7,7 @@ use crate::{
         error::AppError,
         response::{ApiResponse, ok},
     },
-    connection,
+    connection, conversation, message,
     middleware::logging,
     session, user,
 };
@@ -17,6 +17,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/db/ping", get(db_ping))
         .merge(connection::router())
+        .merge(conversation::routes::router(state.clone()))
+        .merge(message::routes::router(state.clone()))
         .merge(session::routes::router(state.clone()))
         .merge(user::routes::router(state.clone()))
         .layer(middleware::from_fn(logging::log_request))

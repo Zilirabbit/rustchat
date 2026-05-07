@@ -4,6 +4,10 @@ use crate::{
     auth::jwt::JwtService,
     common::{config::AppConfig, error::AppResult},
     connection::manager::ConnectionManager,
+    conversation::{
+        repo::PostgresConversationRepository,
+        service::{ConversationService, ConversationUseCase, UnavailableConversationService},
+    },
     message::{
         repo::PostgresMessageRepository,
         service::{MessageService, MessageUseCase, UnavailableMessageService},
@@ -27,6 +31,7 @@ pub struct AppState {
     pub user_service: Arc<dyn UserUseCase>,
     pub session_service: Arc<dyn SessionUseCase>,
     pub message_service: Arc<dyn MessageUseCase>,
+    pub conversation_service: Arc<dyn ConversationUseCase>,
 }
 
 #[derive(Clone)]
@@ -42,10 +47,11 @@ impl AppState {
         };
 
         let jwt = JwtService::new(config.jwt.clone());
-        let (user_service, session_service, message_service): (
+        let (user_service, session_service, message_service, conversation_service): (
             Arc<dyn UserUseCase>,
             Arc<dyn SessionUseCase>,
             Arc<dyn MessageUseCase>,
+            Arc<dyn ConversationUseCase>,
         ) = match storage.as_ref() {
             Some(storage) => {
                 let context = storage.repository_context();
@@ -57,13 +63,19 @@ impl AppState {
                     Arc::new(SessionService::new(PostgresSessionRepository::new(
                         context.clone(),
                     ))),
-                    Arc::new(MessageService::new(PostgresMessageRepository::new(context))),
+                    Arc::new(MessageService::new(PostgresMessageRepository::new(
+                        context.clone(),
+                    ))),
+                    Arc::new(ConversationService::new(
+                        PostgresConversationRepository::new(context),
+                    )),
                 )
             }
             None => (
                 Arc::new(UnavailableUserService),
                 Arc::new(UnavailableSessionService),
                 Arc::new(UnavailableMessageService),
+                Arc::new(UnavailableConversationService),
             ),
         };
 
@@ -74,6 +86,7 @@ impl AppState {
             user_service,
             session_service,
             message_service,
+            conversation_service,
         })
     }
 
@@ -100,6 +113,25 @@ impl AppState {
         session_service: Arc<dyn SessionUseCase>,
         message_service: Arc<dyn MessageUseCase>,
     ) -> Self {
+        Self::new_with_all_services(
+            storage,
+            jwt,
+            user_service,
+            session_service,
+            message_service,
+            Arc::new(UnavailableConversationService),
+        )
+    }
+
+    #[cfg(test)]
+    pub fn new_with_all_services(
+        storage: Option<Storage>,
+        jwt: JwtService,
+        user_service: Arc<dyn UserUseCase>,
+        session_service: Arc<dyn SessionUseCase>,
+        message_service: Arc<dyn MessageUseCase>,
+        conversation_service: Arc<dyn ConversationUseCase>,
+    ) -> Self {
         Self {
             storage,
             auth: AuthState { jwt },
@@ -107,6 +139,7 @@ impl AppState {
             user_service,
             session_service,
             message_service,
+            conversation_service,
         }
     }
 }

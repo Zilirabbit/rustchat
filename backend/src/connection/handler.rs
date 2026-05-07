@@ -240,7 +240,7 @@ mod tests {
         auth::{jwt::JwtService, types::CurrentUser},
         common::{config::JwtConfig, error::AppResult},
         message::{
-            dto::{ChatMessagePayload, SendMessageRequest},
+            dto::{ChatMessagePayload, HistoryMessagesQuery, MessageListPage, SendMessageRequest},
             service::{MessageSendResult, MessageUseCase},
         },
         session::service::UnavailableSessionService,
@@ -279,6 +279,14 @@ mod tests {
                     created_at: "2026-05-03 12:00:00+00".to_string(),
                 },
             })
+        }
+
+        async fn list_history_messages(
+            &self,
+            _current_user: &CurrentUser,
+            _query: HistoryMessagesQuery,
+        ) -> AppResult<MessageListPage> {
+            unreachable!("connection tests do not query history messages")
         }
     }
 

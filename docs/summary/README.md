@@ -26,3 +26,5 @@ v0.2.0-phase1-common.md
 - [v0.1.0 - Phase 1 - middleware 中间件](./v0.1.0-phase1-middleware.md)
 - [v0.1.0 - Phase 1 - connection WebSocket 基础](./v0.1.0-phase1-connection.md)
 - [v0.1.0 - Phase 1 - 私聊功能（message + session）](./v0.1.0-phase1-private-message-session.md)
+- [v0.1.0 - Phase 1 - 会话列表（conversation）](./v0.1.0-phase1-conversation-list.md)
+- [v0.1.0 - Phase 1 - 历史消息](./v0.1.0-phase1-history-messages.md)

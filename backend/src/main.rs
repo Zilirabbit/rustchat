@@ -2,6 +2,7 @@ mod app;
 mod auth;
 mod common;
 mod connection;
+mod conversation;
 mod message;
 mod middleware;
 mod router;

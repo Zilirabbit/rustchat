@@ -6,10 +6,11 @@ use crate::{
     storage::repository::{Repository, RepositoryContext},
 };
 
-use super::model::{PrivateSessionAccess, StoredMessage};
+use super::model::{HistoryMessage, PrivateSessionAccess, StoredMessage};
 
 #[async_trait]
 pub trait MessageRepository: Send + Sync {
+    async fn is_session_member(&self, session_id: i64, user_id: i64) -> AppResult<bool>;
     async fn get_private_session_access(
         &self,
         session_id: i64,
@@ -21,6 +22,12 @@ pub trait MessageRepository: Send + Sync {
         sender_id: i64,
         content: &str,
     ) -> AppResult<StoredMessage>;
+    async fn list_session_messages(
+        &self,
+        session_id: i64,
+        before_message_id: Option<i64>,
+        limit: i64,
+    ) -> AppResult<Vec<HistoryMessage>>;
 }
 
 #[derive(Clone)]
@@ -42,6 +49,23 @@ impl Repository for PostgresMessageRepository {
 
 #[async_trait]
 impl MessageRepository for PostgresMessageRepository {
+    async fn is_session_member(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
+        let row = sqlx::query(
+            r#"
+            SELECT 1
+            FROM session_members
+            WHERE session_id = $1
+              AND user_id = $2
+            "#,
+        )
+        .bind(session_id)
+        .bind(user_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(row.is_some())
+    }
+
     async fn get_private_session_access(
         &self,
         session_id: i64,
@@ -115,6 +139,40 @@ impl MessageRepository for PostgresMessageRepository {
 
         Ok(message)
     }
+
+    async fn list_session_messages(
+        &self,
+        session_id: i64,
+        before_message_id: Option<i64>,
+        limit: i64,
+    ) -> AppResult<Vec<HistoryMessage>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                m.id AS message_id,
+                m.session_id,
+                m.sender_id,
+                u.username AS sender_username,
+                m.message_type,
+                m.content,
+                m.created_at::text AS created_at
+            FROM messages m
+            JOIN users u
+              ON u.id = m.sender_id
+            WHERE m.session_id = $1
+              AND ($2::BIGINT IS NULL OR m.id < $2)
+            ORDER BY m.id DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(session_id)
+        .bind(before_message_id)
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter().map(map_history_message).collect()
+    }
 }
 
 fn map_private_session_access(row: PgRow) -> AppResult<PrivateSessionAccess> {
@@ -129,6 +187,18 @@ fn map_stored_message(row: PgRow) -> AppResult<StoredMessage> {
         message_id: row.try_get("id")?,
         session_id: row.try_get("session_id")?,
         sender_id: row.try_get("sender_id")?,
+        content: row.try_get("content")?,
+        created_at: row.try_get("created_at")?,
+    })
+}
+
+fn map_history_message(row: PgRow) -> AppResult<HistoryMessage> {
+    Ok(HistoryMessage {
+        message_id: row.try_get("message_id")?,
+        session_id: row.try_get("session_id")?,
+        sender_id: row.try_get("sender_id")?,
+        sender_username: row.try_get("sender_username")?,
+        message_type: row.try_get("message_type")?,
         content: row.try_get("content")?,
         created_at: row.try_get("created_at")?,
     })
