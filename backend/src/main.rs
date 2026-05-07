@@ -3,6 +3,8 @@ mod auth;
 mod common;
 mod connection;
 mod conversation;
+#[cfg(test)]
+mod integration_tests;
 mod message;
 mod middleware;
 mod router;
