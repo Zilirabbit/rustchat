@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    dto::{CreatePrivateSessionRequest, CreatePrivateSessionResponse},
+    dto::{CreatePrivateSessionRequest, CreatePrivateSessionResponse, MarkSessionReadResponse},
     repo::SessionRepository,
 };
 
@@ -17,6 +17,11 @@ pub trait SessionUseCase: Send + Sync {
         current_user: &CurrentUser,
         request: CreatePrivateSessionRequest,
     ) -> AppResult<CreatePrivateSessionResponse>;
+    async fn mark_session_read(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+    ) -> AppResult<MarkSessionReadResponse>;
 }
 
 pub struct SessionService<R> {
@@ -84,6 +89,40 @@ where
             created: true,
         })
     }
+
+    async fn mark_session_read(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+    ) -> AppResult<MarkSessionReadResponse> {
+        if session_id <= 0 {
+            return Err(AppError::BadRequest(
+                "session id must be a positive integer".to_string(),
+            ));
+        }
+
+        if !self
+            .repo
+            .is_session_member(session_id, current_user.user_id)
+            .await?
+        {
+            return Err(AppError::Forbidden(
+                "you are not a member of this session".to_string(),
+            ));
+        }
+
+        let last_message_id = self.repo.get_session_last_message_id(session_id).await?;
+        let read_state = self
+            .repo
+            .mark_session_read(session_id, current_user.user_id, last_message_id)
+            .await?;
+
+        Ok(MarkSessionReadResponse {
+            session_id: read_state.session_id,
+            last_read_message_id: read_state.last_read_message_id,
+            last_read_at: read_state.last_read_at,
+        })
+    }
 }
 
 #[derive(Default)]
@@ -98,6 +137,14 @@ impl SessionUseCase for UnavailableSessionService {
     ) -> AppResult<CreatePrivateSessionResponse> {
         Err(AppError::DbNotConfigured)
     }
+
+    async fn mark_session_read(
+        &self,
+        _current_user: &CurrentUser,
+        _session_id: i64,
+    ) -> AppResult<MarkSessionReadResponse> {
+        Err(AppError::DbNotConfigured)
+    }
 }
 
 #[cfg(test)]
@@ -107,13 +154,19 @@ mod tests {
     use async_trait::async_trait;
 
     use super::*;
-    use crate::session::{model::PrivateSession, repo::SessionRepository};
+    use crate::session::{
+        model::{PrivateSession, SessionReadState},
+        repo::SessionRepository,
+    };
 
     #[derive(Default)]
     struct FakeSessionRepository {
         next_session_id: Mutex<i64>,
         users: Mutex<HashMap<i64, bool>>,
         sessions: Mutex<HashMap<(i64, i64), PrivateSession>>,
+        members: Mutex<HashMap<(i64, i64), bool>>,
+        last_message_ids: Mutex<HashMap<i64, Option<i64>>>,
+        read_states: Mutex<HashMap<(i64, i64), SessionReadState>>,
     }
 
     impl FakeSessionRepository {
@@ -136,6 +189,26 @@ mod tests {
                 .get(&user_id)
                 .copied()
                 .unwrap_or(false))
+        }
+
+        async fn is_session_member(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
+            Ok(self
+                .members
+                .lock()
+                .unwrap()
+                .get(&(session_id, user_id))
+                .copied()
+                .unwrap_or(false))
+        }
+
+        async fn get_session_last_message_id(&self, session_id: i64) -> AppResult<Option<i64>> {
+            Ok(self
+                .last_message_ids
+                .lock()
+                .unwrap()
+                .get(&session_id)
+                .copied()
+                .flatten())
         }
 
         async fn find_private_session_between(
@@ -172,6 +245,27 @@ mod tests {
                 .insert(Self::key(created_by, peer_user_id), session.clone());
 
             Ok(session)
+        }
+
+        async fn mark_session_read(
+            &self,
+            session_id: i64,
+            user_id: i64,
+            last_read_message_id: Option<i64>,
+        ) -> AppResult<SessionReadState> {
+            let read_state = SessionReadState {
+                session_id,
+                user_id,
+                last_read_message_id,
+                last_read_at: "2026-05-07 12:00:00+00".to_string(),
+            };
+
+            self.read_states
+                .lock()
+                .unwrap()
+                .insert((session_id, user_id), read_state.clone());
+
+            Ok(read_state)
         }
     }
 
@@ -240,5 +334,50 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(error.status_code(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn mark_session_read_updates_to_last_message() {
+        let repo = FakeSessionRepository::default();
+        repo.members.lock().unwrap().insert((12, 1), true);
+        repo.last_message_ids.lock().unwrap().insert(12, Some(99));
+        let service = SessionService::new(repo);
+
+        let response = service
+            .mark_session_read(&current_user(), 12)
+            .await
+            .unwrap();
+
+        assert_eq!(response.session_id, 12);
+        assert_eq!(response.last_read_message_id, Some(99));
+        assert_eq!(response.last_read_at, "2026-05-07 12:00:00+00");
+    }
+
+    #[tokio::test]
+    async fn mark_session_read_allows_empty_session() {
+        let repo = FakeSessionRepository::default();
+        repo.members.lock().unwrap().insert((12, 1), true);
+        repo.last_message_ids.lock().unwrap().insert(12, None);
+        let service = SessionService::new(repo);
+
+        let response = service
+            .mark_session_read(&current_user(), 12)
+            .await
+            .unwrap();
+
+        assert_eq!(response.session_id, 12);
+        assert_eq!(response.last_read_message_id, None);
+    }
+
+    #[tokio::test]
+    async fn mark_session_read_rejects_non_member() {
+        let service = SessionService::new(FakeSessionRepository::default());
+
+        let error = service
+            .mark_session_read(&current_user(), 12)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::FORBIDDEN);
     }
 }

@@ -41,11 +41,26 @@ async fn real_database_private_chat_flow_works_end_to_end() {
     assert_eq!(me["data"]["user_id"], alice["data"]["user_id"]);
     assert_eq!(me["data"]["username"], alice_username);
 
+    let search = get_json(
+        app.clone(),
+        &format!("/api/users?keyword={bob_username}"),
+        Some(&alice_token),
+    )
+    .await;
+    assert_eq!(search["message"], "users searched");
+    let searched_bob = search["data"]
+        .as_array()
+        .expect("search data should be an array")
+        .iter()
+        .find(|item| item["user_id"] == bob["data"]["user_id"])
+        .expect("alice should find bob by username");
+    assert_eq!(searched_bob["username"], bob_username);
+
     let private_session = post_json(
         app.clone(),
         "/api/sessions/private",
         Some(&alice_token),
-        json!({ "target_user_id": bob["data"]["user_id"] }),
+        json!({ "target_user_id": searched_bob["user_id"] }),
     )
     .await;
     let session_id = private_session["data"]["session_id"]
@@ -107,7 +122,7 @@ async fn real_database_private_chat_flow_works_end_to_end() {
     assert_eq!(conversation["unread_count"], 1);
 
     let history = get_json(
-        app,
+        app.clone(),
         &format!("/api/messages?session_id={session_id}&limit=20"),
         Some(&bob_token),
     )
@@ -121,6 +136,29 @@ async fn real_database_private_chat_flow_works_end_to_end() {
         history["data"]["messages"][0]["sender_username"],
         alice_username
     );
+
+    let read = post_json(
+        app.clone(),
+        &format!("/api/sessions/{session_id}/read"),
+        Some(&bob_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(read["message"], "session marked as read");
+    assert_eq!(read["data"]["session_id"], session_id);
+    assert_eq!(
+        read["data"]["last_read_message_id"],
+        history["data"]["messages"][0]["message_id"]
+    );
+
+    let conversations_after_read = get_json(app, "/api/conversations", Some(&bob_token)).await;
+    let conversation_after_read = conversations_after_read["data"]
+        .as_array()
+        .expect("conversations data should be an array")
+        .iter()
+        .find(|item| item["session_id"].as_i64() == Some(session_id))
+        .expect("bob should still see the private conversation");
+    assert_eq!(conversation_after_read["unread_count"], 0);
 }
 
 async fn real_database_state() -> AppState {

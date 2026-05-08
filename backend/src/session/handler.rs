@@ -1,4 +1,7 @@
-use axum::{Json, extract::State};
+use axum::{
+    Json,
+    extract::{Path, State},
+};
 
 use crate::{
     app::AppState,
@@ -9,7 +12,9 @@ use crate::{
     },
 };
 
-use super::dto::{CreatePrivateSessionRequest, CreatePrivateSessionResponse};
+use super::dto::{
+    CreatePrivateSessionRequest, CreatePrivateSessionResponse, MarkSessionReadResponse,
+};
 
 pub async fn create_private_session(
     State(state): State<AppState>,
@@ -22,4 +27,17 @@ pub async fn create_private_session(
         .await?;
 
     Ok(ok("private session ready", session))
+}
+
+pub async fn mark_session_read(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Path(session_id): Path<i64>,
+) -> Result<Json<ApiResponse<MarkSessionReadResponse>>, AppError> {
+    let read_state = state
+        .session_service
+        .mark_session_read(&current_user, session_id)
+        .await?;
+
+    Ok(ok("session marked as read", read_state))
 }

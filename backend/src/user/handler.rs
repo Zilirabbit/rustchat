@@ -1,4 +1,7 @@
-use axum::{Json, extract::State};
+use axum::{
+    Json,
+    extract::{Query, State},
+};
 
 use crate::{
     app::AppState,
@@ -10,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    dto::{AuthResponse, LoginRequest, RegisterRequest},
+    dto::{AuthResponse, LoginRequest, RegisterRequest, SearchUsersQuery, UserSearchItem},
     model::UserProfile,
 };
 
@@ -39,4 +42,16 @@ pub async fn me(
         .get_user_by_id(current_user.user_id)
         .await?;
     Ok(ok("current user fetched", user))
+}
+
+pub async fn search_users(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Query(query): Query<SearchUsersQuery>,
+) -> Result<Json<ApiResponse<Vec<UserSearchItem>>>, AppError> {
+    let users = state
+        .user_service
+        .search_users(&current_user, query)
+        .await?;
+    Ok(ok("users searched", users))
 }

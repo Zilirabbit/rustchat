@@ -10,6 +10,7 @@ use super::handler;
 pub fn router(state: AppState) -> Router<AppState> {
     let protected_routes = Router::new()
         .route("/api/me", get(handler::me))
+        .route("/api/users", get(handler::search_users))
         .route_layer(middleware::from_fn_with_state(state, auth::require_auth));
 
     Router::new()
@@ -37,7 +38,7 @@ mod tests {
     };
 
     use super::super::{
-        dto::{AuthResponse, LoginRequest, RegisterRequest},
+        dto::{AuthResponse, LoginRequest, RegisterRequest, SearchUsersQuery, UserSearchItem},
         model::UserProfile,
         service::UserUseCase,
     };
@@ -72,6 +73,17 @@ mod tests {
                 username: "alice".to_string(),
                 avatar_url: None,
             })
+        }
+
+        async fn search_users(
+            &self,
+            _current_user: &crate::auth::types::CurrentUser,
+            query: SearchUsersQuery,
+        ) -> AppResult<Vec<UserSearchItem>> {
+            Ok(vec![UserSearchItem {
+                user_id: 2,
+                username: format!("{}-bob", query.keyword.trim()),
+            }])
         }
     }
 
@@ -201,6 +213,50 @@ mod tests {
                 Request::builder()
                     .uri("/api/me")
                     .header(header::AUTHORIZATION, "Bearer invalid-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn search_users_endpoint_returns_matches() {
+        let jwt = test_jwt_service();
+        let token = jwt.issue_token(1, "alice").unwrap();
+        let state = AppState::new(None, jwt, Arc::new(StubUserService));
+
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/users?keyword=bo")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["message"], "users searched");
+        assert_eq!(body["data"][0]["user_id"], 2);
+        assert_eq!(body["data"][0]["username"], "bo-bob");
+    }
+
+    #[tokio::test]
+    async fn search_users_endpoint_rejects_missing_token() {
+        let state = test_state();
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/users?keyword=bo")
                     .body(Body::empty())
                     .unwrap(),
             )

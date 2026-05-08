@@ -6,11 +6,13 @@ use crate::{
     storage::repository::{Repository, RepositoryContext},
 };
 
-use super::model::PrivateSession;
+use super::model::{PrivateSession, SessionReadState};
 
 #[async_trait]
 pub trait SessionRepository: Send + Sync {
     async fn user_exists(&self, user_id: i64) -> AppResult<bool>;
+    async fn is_session_member(&self, session_id: i64, user_id: i64) -> AppResult<bool>;
+    async fn get_session_last_message_id(&self, session_id: i64) -> AppResult<Option<i64>>;
     async fn find_private_session_between(
         &self,
         user_id: i64,
@@ -21,6 +23,12 @@ pub trait SessionRepository: Send + Sync {
         created_by: i64,
         peer_user_id: i64,
     ) -> AppResult<PrivateSession>;
+    async fn mark_session_read(
+        &self,
+        session_id: i64,
+        user_id: i64,
+        last_read_message_id: Option<i64>,
+    ) -> AppResult<SessionReadState>;
 }
 
 #[derive(Clone)]
@@ -49,6 +57,38 @@ impl SessionRepository for PostgresSessionRepository {
             .await?;
 
         Ok(row.is_some())
+    }
+
+    async fn is_session_member(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
+        let row = sqlx::query(
+            r#"
+            SELECT 1
+            FROM session_members
+            WHERE session_id = $1
+              AND user_id = $2
+            "#,
+        )
+        .bind(session_id)
+        .bind(user_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(row.is_some())
+    }
+
+    async fn get_session_last_message_id(&self, session_id: i64) -> AppResult<Option<i64>> {
+        let row = sqlx::query(
+            r#"
+            SELECT last_message_id
+            FROM sessions
+            WHERE id = $1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(row.map(|row| row.try_get("last_message_id")).transpose()?)
     }
 
     async fn find_private_session_between(
@@ -123,6 +163,41 @@ impl SessionRepository for PostgresSessionRepository {
 
         Ok(session)
     }
+
+    async fn mark_session_read(
+        &self,
+        session_id: i64,
+        user_id: i64,
+        last_read_message_id: Option<i64>,
+    ) -> AppResult<SessionReadState> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO user_session_read_state (
+                user_id,
+                session_id,
+                last_read_message_id,
+                last_read_at
+            )
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (user_id, session_id)
+            DO UPDATE SET
+                last_read_message_id = EXCLUDED.last_read_message_id,
+                last_read_at = EXCLUDED.last_read_at
+            RETURNING
+                session_id,
+                user_id,
+                last_read_message_id,
+                last_read_at::text AS last_read_at
+            "#,
+        )
+        .bind(user_id)
+        .bind(session_id)
+        .bind(last_read_message_id)
+        .fetch_one(self.pool())
+        .await?;
+
+        map_session_read_state(row)
+    }
 }
 
 fn map_private_session(row: PgRow, peer_user_id: i64) -> AppResult<PrivateSession> {
@@ -131,5 +206,14 @@ fn map_private_session(row: PgRow, peer_user_id: i64) -> AppResult<PrivateSessio
         created_by: row.try_get("created_by")?,
         peer_user_id,
         created_at: row.try_get("created_at")?,
+    })
+}
+
+fn map_session_read_state(row: PgRow) -> AppResult<SessionReadState> {
+    Ok(SessionReadState {
+        session_id: row.try_get("session_id")?,
+        user_id: row.try_get("user_id")?,
+        last_read_message_id: row.try_get("last_read_message_id")?,
+        last_read_at: row.try_get("last_read_at")?,
     })
 }

@@ -436,6 +436,55 @@
       ]
     },
     {
+      "name": "User",
+      "description": "Authenticated user lookup helpers for client-side private session creation.",
+      "item": [
+        {
+          "name": "Search Users As Alice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json && Array.isArray(json.data) && json.data.length > 0) {",
+                  "  pm.globals.set('rustchat_search_target_user_id', String(json.data[0].user_id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{rustchat_alice_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users?keyword={{bob_username}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "keyword",
+                  "value": "{{bob_username}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Session",
       "description": "Private session creation for the Phase 1 direct message flow.",
       "item": [
@@ -536,6 +585,31 @@
                 "api",
                 "sessions",
                 "private"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Private Session Read As Bob",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{rustchat_bob_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sessions/{{rustchat_private_session_id}}/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "sessions",
+                "{{rustchat_private_session_id}}",
+                "read"
               ]
             }
           },

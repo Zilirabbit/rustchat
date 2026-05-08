@@ -6,13 +6,19 @@ use crate::{
     storage::repository::{Repository, RepositoryContext},
 };
 
-use super::model::User;
+use super::model::{User, UserSearchResult};
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
     async fn create_user(&self, username: &str, password_hash: &str) -> AppResult<User>;
     async fn find_by_id(&self, user_id: i64) -> AppResult<Option<User>>;
     async fn find_by_username(&self, username: &str) -> AppResult<Option<User>>;
+    async fn search_by_username_keyword(
+        &self,
+        keyword: &str,
+        exclude_user_id: i64,
+        limit: i64,
+    ) -> AppResult<Vec<UserSearchResult>>;
 }
 
 #[derive(Clone)]
@@ -80,6 +86,31 @@ impl UserRepository for PostgresUserRepository {
 
         row.map(map_user).transpose()
     }
+
+    async fn search_by_username_keyword(
+        &self,
+        keyword: &str,
+        exclude_user_id: i64,
+        limit: i64,
+    ) -> AppResult<Vec<UserSearchResult>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, username
+            FROM users
+            WHERE id <> $2
+              AND POSITION(LOWER($1) IN LOWER(username)) > 0
+            ORDER BY username ASC, id ASC
+            LIMIT $3
+            "#,
+        )
+        .bind(keyword)
+        .bind(exclude_user_id)
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter().map(map_user_search_result).collect()
+    }
 }
 
 fn map_user(row: PgRow) -> AppResult<User> {
@@ -88,6 +119,13 @@ fn map_user(row: PgRow) -> AppResult<User> {
         username: row.try_get("username")?,
         password_hash: row.try_get("password_hash")?,
         avatar_url: row.try_get("avatar_url")?,
+    })
+}
+
+fn map_user_search_result(row: PgRow) -> AppResult<UserSearchResult> {
+    Ok(UserSearchResult {
+        user_id: row.try_get("id")?,
+        username: row.try_get("username")?,
     })
 }
 

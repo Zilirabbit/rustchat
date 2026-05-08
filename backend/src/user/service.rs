@@ -1,23 +1,30 @@
 use async_trait::async_trait;
 
 use crate::{
+    auth::types::CurrentUser,
     auth::{jwt::JwtService, password::PasswordService},
     common::error::{AppError, AppResult},
 };
 
 use super::{
-    dto::{AuthResponse, LoginRequest, RegisterRequest},
+    dto::{AuthResponse, LoginRequest, RegisterRequest, SearchUsersQuery, UserSearchItem},
     model::UserProfile,
     repo::UserRepository,
 };
 
 const INVALID_CREDENTIALS_MESSAGE: &str = "invalid username or password";
+const MAX_SEARCH_RESULTS: i64 = 20;
 
 #[async_trait]
 pub trait UserUseCase: Send + Sync {
     async fn register(&self, request: RegisterRequest) -> AppResult<UserProfile>;
     async fn login(&self, request: LoginRequest) -> AppResult<AuthResponse>;
     async fn get_user_by_id(&self, user_id: i64) -> AppResult<UserProfile>;
+    async fn search_users(
+        &self,
+        current_user: &CurrentUser,
+        query: SearchUsersQuery,
+    ) -> AppResult<Vec<UserSearchItem>>;
 }
 
 pub struct UserService<R> {
@@ -91,6 +98,26 @@ where
 
         Ok(user.into())
     }
+
+    async fn search_users(
+        &self,
+        current_user: &CurrentUser,
+        query: SearchUsersQuery,
+    ) -> AppResult<Vec<UserSearchItem>> {
+        let keyword = validate_search_keyword(&query.keyword)?;
+        let users = self
+            .repo
+            .search_by_username_keyword(&keyword, current_user.user_id, MAX_SEARCH_RESULTS)
+            .await?;
+
+        Ok(users
+            .into_iter()
+            .map(|user| UserSearchItem {
+                user_id: user.user_id,
+                username: user.username,
+            })
+            .collect())
+    }
 }
 
 #[derive(Default)]
@@ -107,6 +134,14 @@ impl UserUseCase for UnavailableUserService {
     }
 
     async fn get_user_by_id(&self, _user_id: i64) -> AppResult<UserProfile> {
+        Err(AppError::DbNotConfigured)
+    }
+
+    async fn search_users(
+        &self,
+        _current_user: &CurrentUser,
+        _query: SearchUsersQuery,
+    ) -> AppResult<Vec<UserSearchItem>> {
         Err(AppError::DbNotConfigured)
     }
 }
@@ -148,6 +183,19 @@ fn validate_password_strength(password: &str) -> AppResult<()> {
     Ok(())
 }
 
+fn validate_search_keyword(keyword: &str) -> AppResult<String> {
+    let keyword = keyword.trim();
+    let keyword_len = keyword.chars().count();
+
+    if !(1..=32).contains(&keyword_len) {
+        return Err(AppError::BadRequest(
+            "keyword must be between 1 and 32 characters".to_string(),
+        ));
+    }
+
+    Ok(keyword.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashMap, sync::Mutex};
@@ -157,7 +205,7 @@ mod tests {
     use crate::{
         auth::password::PasswordService,
         common::{config::JwtConfig, error::AppError},
-        user::model::User,
+        user::model::{User, UserSearchResult},
     };
 
     use super::*;
@@ -201,6 +249,36 @@ mod tests {
                 .values()
                 .find(|user| user.username.eq_ignore_ascii_case(username))
                 .cloned())
+        }
+
+        async fn search_by_username_keyword(
+            &self,
+            keyword: &str,
+            exclude_user_id: i64,
+            limit: i64,
+        ) -> AppResult<Vec<UserSearchResult>> {
+            let keyword = keyword.to_lowercase();
+
+            let mut users = self
+                .users
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|user| user.id != exclude_user_id)
+                .filter(|user| user.username.to_lowercase().contains(&keyword))
+                .map(|user| UserSearchResult {
+                    user_id: user.id,
+                    username: user.username.clone(),
+                })
+                .collect::<Vec<_>>();
+            users.sort_by(|left, right| {
+                left.username
+                    .cmp(&right.username)
+                    .then(left.user_id.cmp(&right.user_id))
+            });
+            users.truncate(limit as usize);
+
+            Ok(users)
         }
     }
 
@@ -293,5 +371,58 @@ mod tests {
 
         assert_eq!(error.status_code(), axum::http::StatusCode::UNAUTHORIZED);
         assert_eq!(error.to_string(), INVALID_CREDENTIALS_MESSAGE);
+    }
+
+    #[tokio::test]
+    async fn search_users_returns_matching_public_profiles() {
+        let repository = FakeUserRepository::default();
+        let password_hash = PasswordService::new().hash_password("secret123").unwrap();
+        repository
+            .create_user("alice", &password_hash)
+            .await
+            .unwrap();
+        repository.create_user("bob", &password_hash).await.unwrap();
+        repository
+            .create_user("bobby", &password_hash)
+            .await
+            .unwrap();
+
+        let service = UserService::new(repository, jwt_service());
+        let users = service
+            .search_users(
+                &CurrentUser {
+                    user_id: 1,
+                    username: "alice".to_string(),
+                },
+                SearchUsersQuery {
+                    keyword: "bo".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(users.len(), 2);
+        assert_eq!(users[0].username, "bob");
+        assert_eq!(users[1].username, "bobby");
+    }
+
+    #[tokio::test]
+    async fn search_users_rejects_blank_keyword() {
+        let service = UserService::new(FakeUserRepository::default(), jwt_service());
+
+        let error = service
+            .search_users(
+                &CurrentUser {
+                    user_id: 1,
+                    username: "alice".to_string(),
+                },
+                SearchUsersQuery {
+                    keyword: " ".to_string(),
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::BAD_REQUEST);
     }
 }

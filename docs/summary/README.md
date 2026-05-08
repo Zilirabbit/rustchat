@@ -28,4 +28,5 @@ v0.2.0-phase1-common.md
 - [v0.1.0 - Phase 1 - 私聊功能（message + session）](./v0.1.0-phase1-private-message-session.md)
 - [v0.1.0 - Phase 1 - 会话列表（conversation）](./v0.1.0-phase1-conversation-list.md)
 - [v0.1.0 - Phase 1 - 历史消息](./v0.1.0-phase1-history-messages.md)
+- [v0.1.0 - Phase 1 - 客户端联调前置接口收口](./v0.1.0-phase1-client-preflight-apis.md)
 - [v0.1.0 - Phase 1 - 真实数据库集成测试](./v0.1.0-phase1-real-db-integration-tests.md)

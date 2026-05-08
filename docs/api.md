@@ -269,7 +269,58 @@ curl http://127.0.0.1:3000/api/me \
 - `401`：鉴权通过但用户不存在
 - `503`：数据库未配置
 
-### 4.6 创建私聊会话
+### 4.6 搜索用户
+
+- 方法：`GET`
+- 路径：`/api/users`
+- 鉴权：是
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+查询参数：
+
+- `keyword`：必填，按用户名模糊匹配，去除首尾空格后长度必须在 `1~32`
+
+说明：
+
+- 仅返回创建私聊所需的最小公开字段：`user_id`、`username`
+- 不返回 `password_hash` 等敏感字段
+- 当前实现会排除当前登录用户，避免前端误选自己创建私聊
+- 单次最多返回 `20` 条
+
+示例请求：
+
+```bash
+curl "http://127.0.0.1:3000/api/users?keyword=bo" \
+  -H "Authorization: Bearer <token>"
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "users searched",
+  "data": [
+    {
+      "user_id": 2,
+      "username": "bob"
+    }
+  ]
+}
+```
+
+可能错误：
+
+- `400`：缺少 `keyword` 或查询参数不合法
+- `401`：缺少 token 或 token 非法
+- `503`：数据库未配置
+
+### 4.7 创建私聊会话
 
 - 方法：`POST`
 - 路径：`/api/sessions/private`
@@ -327,7 +378,55 @@ curl -X POST http://127.0.0.1:3000/api/sessions/private \
 - `401`：缺少 token 或 token 非法
 - `503`：数据库未配置
 
-### 4.7 获取会话列表
+### 4.8 标记会话已读
+
+- 方法：`POST`
+- 路径：`/api/sessions/{session_id}/read`
+- 鉴权：是
+- 请求体：无
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+说明：
+
+- 仅会话成员可标记该会话已读
+- 当前实现会将 `user_session_read_state.last_read_message_id` 更新为该会话当前的 `sessions.last_message_id`
+- 空会话会写入 `last_read_message_id = null`，并更新 `last_read_at`
+- 标记后再次查询 `GET /api/conversations`，该会话对当前用户的 `unread_count` 应为 `0`
+
+示例请求：
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/sessions/12/read \
+  -H "Authorization: Bearer <token>"
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "session marked as read",
+  "data": {
+    "session_id": 12,
+    "last_read_message_id": 90,
+    "last_read_at": "2026-05-07 12:00:00+00"
+  }
+}
+```
+
+可能错误：
+
+- `400`：`session_id` 不合法
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是该会话成员
+- `503`：数据库未配置
+
+### 4.9 获取会话列表
 
 - 方法：`GET`
 - 路径：`/api/conversations`
@@ -385,7 +484,7 @@ curl http://127.0.0.1:3000/api/conversations \
 - `401`：缺少 token 或 token 非法
 - `503`：数据库未配置
 
-### 4.8 查询历史消息
+### 4.10 查询历史消息
 
 - 方法：`GET`
 - 路径：`/api/messages`
@@ -466,7 +565,7 @@ curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_i
 - `403`：当前用户不是该会话成员
 - `503`：数据库未配置
 
-### 4.9 WebSocket 连接
+### 4.11 WebSocket 连接
 
 - 方法：`GET`
 - 路径：`/ws`
@@ -590,13 +689,16 @@ Authorization: Bearer <jwt-token>
 4. `POST /api/login`
 5. 将 `data.token` 写入 `token` 变量
 6. `GET /api/me`
-7. `POST /api/sessions/private`
-8. 连接 `GET /ws?token=<jwt>`
-9. 发送 `{"type":"send_message","session_id":<id>,"content":"hello"}`
-10. `GET /api/conversations`
-11. `GET /api/messages?session_id=<id>&limit=20`
-12. 删除 `Authorization` 再测一次 `/api/me`
-13. 将 token 改成非法值再测一次 `/api/me`
+7. `GET /api/users?keyword=<username>`
+8. `POST /api/sessions/private`
+9. 连接 `GET /ws?token=<jwt>`
+10. 发送 `{"type":"send_message","session_id":<id>,"content":"hello"}`
+11. `GET /api/conversations`
+12. `GET /api/messages?session_id=<id>&limit=20`
+13. `POST /api/sessions/<id>/read`
+14. 再次 `GET /api/conversations` 验证 `unread_count`
+15. 删除 `Authorization` 再测一次 `/api/me`
+16. 将 token 改成非法值再测一次 `/api/me`
 
 ## 6. 维护约定
 

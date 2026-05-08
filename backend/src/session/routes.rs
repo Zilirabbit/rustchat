@@ -10,6 +10,10 @@ pub fn router(state: AppState) -> Router<AppState> {
             "/api/sessions/private",
             post(handler::create_private_session),
         )
+        .route(
+            "/api/sessions/{session_id}/read",
+            post(handler::mark_session_read),
+        )
         .route_layer(middleware::from_fn_with_state(state, auth::require_auth))
 }
 
@@ -34,7 +38,7 @@ mod tests {
     };
 
     use super::super::{
-        dto::{CreatePrivateSessionRequest, CreatePrivateSessionResponse},
+        dto::{CreatePrivateSessionRequest, CreatePrivateSessionResponse, MarkSessionReadResponse},
         service::SessionUseCase,
     };
     use super::router;
@@ -54,6 +58,18 @@ mod tests {
                 peer_user_id: request.target_user_id,
                 created_at: "2026-05-03 12:00:00+00".to_string(),
                 created: true,
+            })
+        }
+
+        async fn mark_session_read(
+            &self,
+            _current_user: &CurrentUser,
+            session_id: i64,
+        ) -> AppResult<MarkSessionReadResponse> {
+            Ok(MarkSessionReadResponse {
+                session_id,
+                last_read_message_id: Some(99),
+                last_read_at: "2026-05-07 12:00:00+00".to_string(),
             })
         }
     }
@@ -119,6 +135,65 @@ mod tests {
                     .uri("/api/sessions/private")
                     .header(header::CONTENT_TYPE, "application/json")
                     .body(Body::from(json!({ "target_user_id": 2 }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn mark_session_read_endpoint_returns_read_state() {
+        let jwt = test_jwt_service();
+        let token = jwt.issue_token(1, "alice").unwrap();
+        let state = AppState::new_with_services(
+            None,
+            jwt,
+            Arc::new(UnavailableUserService),
+            Arc::new(StubSessionService),
+            Arc::new(UnavailableMessageService),
+        );
+
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sessions/12/read")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["message"], "session marked as read");
+        assert_eq!(body["data"]["session_id"], 12);
+        assert_eq!(body["data"]["last_read_message_id"], 99);
+    }
+
+    #[tokio::test]
+    async fn mark_session_read_endpoint_rejects_missing_token() {
+        let state = AppState::new_with_services(
+            None,
+            test_jwt_service(),
+            Arc::new(UnavailableUserService),
+            Arc::new(StubSessionService),
+            Arc::new(UnavailableMessageService),
+        );
+
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sessions/12/read")
+                    .body(Body::empty())
                     .unwrap(),
             )
             .await

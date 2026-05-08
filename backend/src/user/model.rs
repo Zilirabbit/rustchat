@@ -16,6 +16,12 @@ pub struct UserProfile {
     pub avatar_url: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserSearchResult {
+    pub user_id: i64,
+    pub username: String,
+}
+
 impl From<User> for UserProfile {
     fn from(user: User) -> Self {
         Self {
