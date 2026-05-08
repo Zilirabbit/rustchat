@@ -433,6 +433,28 @@
 
 ## 5.2 前端 UI
 
+### 前端环境搭建任务
+
+- [ ] 确认前端技术栈：`Vue 3 + TypeScript + Vite`
+- [ ] 确认前端基础依赖：`vue-router`、`pinia`、`axios`
+- [ ] 在项目根目录创建 `frontend/` 应用目录
+- [ ] 初始化 Vite Vue TypeScript 项目
+- [ ] 配置前端 `.env.example`
+- [ ] 配置后端 HTTP API 地址，例如 `VITE_API_BASE_URL`
+- [ ] 配置 WebSocket 地址，例如 `VITE_WS_BASE_URL`
+- [ ] 配置开发服务器监听 `0.0.0.0`，便于 Windows 宿主机访问虚拟机内前端服务
+- [ ] 补充前端启动说明，例如 `npm install`、`npm run dev -- --host 0.0.0.0`
+- [ ] 验证前端 dev server 可从宿主机浏览器访问
+
+### 前端环境完成标准
+
+- `frontend/` 目录存在且可独立启动
+- `npm install` 可成功安装依赖
+- `npm run dev -- --host 0.0.0.0` 可启动 Vite 开发服务器
+- Windows 宿主机可通过 `http://<虚拟机IP>:5173` 访问前端页面
+- 前端环境变量可区分 HTTP API 与 WebSocket 地址
+- 暂不要求完成具体聊天 UI 和接口联调
+
 ### 任务
 
 - [ ] 登录页
@@ -558,6 +580,7 @@
 8. 会话列表
 9. 历史消息
 10. 客户端联调前置接口收口（用户搜索 + 会话已读）
-11. 群聊
-12. 前端联调
-13. 可选优化
+11. 前端环境搭建
+12. 前端私聊 UI 与联调
+13. 群聊
+14. 可选优化

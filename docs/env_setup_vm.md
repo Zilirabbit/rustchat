@@ -201,6 +201,58 @@ source ~/.bashrc
 nvm install 18
 ```
 
+验证安装：
+
+```bash
+node --version
+npm --version
+```
+
+当前前端计划先使用：
+
+```text
+Vue 3 + TypeScript + Vite
+```
+
+后续搭建前端时建议在项目根目录创建：
+
+```text
+frontend/
+```
+
+前端基础依赖建议：
+
+```text
+vue-router
+pinia
+axios
+```
+
+虚拟机开发时，Vite dev server 需要监听 `0.0.0.0`，否则 Windows 宿主机浏览器无法访问：
+
+```bash
+npm run dev -- --host 0.0.0.0
+```
+
+访问地址示例：
+
+```text
+http://<虚拟机IP>:5173
+```
+
+前端环境变量建议预留：
+
+```text
+VITE_API_BASE_URL=http://<虚拟机IP>:3000
+VITE_WS_BASE_URL=ws://<虚拟机IP>:3000
+```
+
+注意：
+
+- 当前只是环境约定，尚未开始初始化 `frontend/`
+- 后端服务仍需要监听 `0.0.0.0:3000`
+- 如果虚拟机配置了代理，`localhost`、`127.0.0.1`、虚拟机内网 IP 应加入 `NO_PROXY / no_proxy`
+
 ---
 
 ## 8. 安装 PostgreSQL

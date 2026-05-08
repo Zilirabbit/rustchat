@@ -212,7 +212,101 @@ backend/
 
 ---
 
-## 6. 为什么不用全局 `dto/`、`model/`、`service/` 目录
+## 6. frontend 推荐目录结构
+
+前端计划先使用：
+
+```text
+Vue 3 + TypeScript + Vite
+```
+
+推荐目录结构：
+
+```text
+frontend/
+├─ package.json
+├─ index.html
+├─ vite.config.ts
+├─ tsconfig.json
+├─ .env.example
+├─ public/
+└─ src/
+   ├─ main.ts
+   ├─ App.vue
+   ├─ router/
+   │  └─ index.ts
+   ├─ stores/
+   │  ├─ auth.ts
+   │  ├─ chat.ts
+   │  └─ connection.ts
+   ├─ api/
+   │  ├─ http.ts
+   │  ├─ auth.ts
+   │  ├─ users.ts
+   │  ├─ sessions.ts
+   │  ├─ conversations.ts
+   │  └─ messages.ts
+   ├─ ws/
+   │  └─ client.ts
+   ├─ views/
+   │  ├─ LoginView.vue
+   │  └─ ChatView.vue
+   ├─ components/
+   │  ├─ ConversationList.vue
+   │  ├─ MessageList.vue
+   │  ├─ MessageInput.vue
+   │  └─ UserSearch.vue
+   ├─ types/
+   │  ├─ api.ts
+   │  └─ chat.ts
+   └─ styles/
+      └─ main.css
+```
+
+### 6.1 前端目录职责
+
+- `router/`：页面路由，例如登录页与聊天主页面
+- `stores/`：Pinia 状态，例如登录态、当前会话、WebSocket 连接状态
+- `api/`：HTTP API 封装，对应后端 `auth / users / sessions / conversations / messages`
+- `ws/`：WebSocket 连接、事件解析、消息发送封装
+- `views/`：页面级组件
+- `components/`：可复用 UI 组件
+- `types/`：前端请求、响应、聊天事件类型
+- `styles/`：全局样式
+
+### 6.2 前端环境变量约定
+
+建议在 `frontend/.env.example` 中预留：
+
+```text
+VITE_API_BASE_URL=http://127.0.0.1:3000
+VITE_WS_BASE_URL=ws://127.0.0.1:3000
+```
+
+在 Ubuntu 虚拟机 + Windows 宿主机浏览器访问场景中，应改为：
+
+```text
+VITE_API_BASE_URL=http://<虚拟机IP>:3000
+VITE_WS_BASE_URL=ws://<虚拟机IP>:3000
+```
+
+### 6.3 当前阶段前端边界
+
+第一版前端只要求完成私聊演示闭环：
+
+- 注册 / 登录
+- 搜索用户并创建私聊
+- 会话列表
+- 历史消息
+- WebSocket 发送与接收文本消息
+- 标记会话已读
+- 刷新页面后恢复登录态并重新拉取会话与历史消息
+
+群聊、图片消息、自动重连、消息发送状态、在线状态展示可以后置。
+
+---
+
+## 7. 为什么不用全局 `dto/`、`model/`、`service/` 目录
 
 不建议这样：
 
@@ -227,7 +321,7 @@ src/
 
 原因：
 
-### 6.1 不利于按功能阅读
+### 7.1 不利于按功能阅读
 
 如果做用户登录功能，你就要分别查看：
 
@@ -239,7 +333,7 @@ src/
 
 文件分散，不利于“每次只读取一个功能的相关上下文”。
 
-### 6.2 小项目容易越写越乱
+### 7.2 小项目容易越写越乱
 
 随着功能增多，会出现大量：
 
@@ -249,7 +343,7 @@ src/
 
 这些都堆在一起，管理成本会越来越高。
 
-### 6.3 按模块聚合更适合当前项目
+### 7.3 按模块聚合更适合当前项目
 
 RustChat 当前更适合：
 
@@ -260,11 +354,11 @@ RustChat 当前更适合：
 
 ---
 
-## 7. 哪些东西应该全局统一
+## 8. 哪些东西应该全局统一
 
 以下内容建议统一放公共层：
 
-### 7.1 `common/`
+### 8.1 `common/`
 
 放真正跨模块复用的内容：
 
@@ -274,7 +368,7 @@ RustChat 当前更适合：
 - `pagination.rs`：分页参数与分页返回
 - `utils.rs`：真正通用的辅助函数
 
-### 7.2 `auth/`
+### 8.2 `auth/`
 
 放认证相关公共能力：
 
@@ -282,7 +376,7 @@ RustChat 当前更适合：
 - 密码加密
 - Claims / 当前用户上下文类型
 
-### 7.3 `storage/`
+### 8.3 `storage/`
 
 放数据库基础设施：
 
@@ -290,7 +384,7 @@ RustChat 当前更适合：
 - 事务封装
 - 共享 DB 类型
 
-### 7.4 `ws/`
+### 8.4 `ws/`
 
 放 WebSocket 相关公共能力：
 
@@ -301,7 +395,7 @@ RustChat 当前更适合：
 
 ---
 
-## 8. 哪些东西应该放模块内
+## 9. 哪些东西应该放模块内
 
 以下内容更适合放在业务模块内部：
 
@@ -326,7 +420,7 @@ RustChat 当前更适合：
 
 ---
 
-## 9. 关于 `utils` 的约定
+## 10. 关于 `utils` 的约定
 
 `utils` 最容易变成杂物箱，因此要严格控制。
 
@@ -351,11 +445,11 @@ RustChat 当前更适合：
 
 ---
 
-## 10. 关于 `model` 和 `dto` 的约定
+## 11. 关于 `model` 和 `dto` 的约定
 
 为了避免后续不统一，建议固定以下规则：
 
-### 10.1 `model.rs`
+### 11.1 `model.rs`
 
 用于放：
 
@@ -368,7 +462,7 @@ RustChat 当前更适合：
 - `Session`
 - `Message`
 
-### 10.2 `dto.rs`
+### 11.2 `dto.rs`
 
 用于放：
 
@@ -383,7 +477,7 @@ RustChat 当前更适合：
 - `CreateGroupSessionRequest`
 - `MessageListQuery`
 
-### 10.3 不要混用
+### 11.3 不要混用
 
 不要把：
 
@@ -400,7 +494,7 @@ RustChat 当前更适合：
 
 ---
 
-## 11. 每个模块的统一结构建议
+## 12. 每个模块的统一结构建议
 
 建议所有业务模块尽量使用同样的文件模式：
 
@@ -428,7 +522,7 @@ xxx/
 
 ---
 
-## 12. 什么时候再拆更多文档
+## 13. 什么时候再拆更多文档
 
 当前不建议一次性增加过多文档。
 
@@ -445,7 +539,7 @@ xxx/
 
 ---
 
-## 13. 当前阶段的推荐落地方案
+## 14. 当前阶段的推荐落地方案
 
 ### 文档层
 
@@ -490,7 +584,7 @@ xxx/
 
 ---
 
-## 14. 一页约定（建议长期保持）
+## 15. 一页约定（建议长期保持）
 
 1. 按业务模块组织代码，不按全局 DTO/MODEL/SERVICE 横切。
 2. 每个业务模块优先保持统一结构：`handler.rs / service.rs / repo.rs / dto.rs / model.rs / routes.rs`。
@@ -502,7 +596,7 @@ xxx/
 
 ---
 
-## 15. 最终建议
+## 16. 最终建议
 
 对于当前 RustChat 项目：
 
@@ -510,4 +604,3 @@ xxx/
 - 它应作为项目级约定文档长期维护
 - 后端目录采用“按业务模块聚合”的方式，而不是全局按 DTO/MODEL/SERVICE 横切
 - 真正的统一性来自**约定统一**，不是把所有文件堆到同一个目录
-
