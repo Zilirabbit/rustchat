@@ -482,7 +482,8 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] 用户搜索组件
 - [x] WebSocket 客户端基础封装
 - [x] 本地 demo 跳过验证入口
-- [~] 与后端接口联调
+- [x] 后端 HTTP 接口联调
+- [~] 前端浏览器真实 HTTP 联调
 - [~] 与 WebSocket 联调
 
 ### 完成标准
@@ -497,18 +498,20 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - 前端第一版 UI 已完成，可通过 `npm run dev -- --host 0.0.0.0` 访问。
 - 登录页已提供“跳过验证进入”按钮，用于后端认证链路不可用时先查看聊天页面。
 - demo 跳过模式只用于页面预览，不会自动请求受保护接口，也不会建立 WebSocket 连接。
-- 真实注册 / 登录当前仍需继续联调，不能视为完成。
+- 后端 HTTP 主流程已通过真实接口联调：`health -> db/ping -> register -> login -> me -> users search -> create private session -> conversations -> messages -> mark read`。
+- 前端浏览器真实点击流仍需继续验收，不能视为完成。
 
 ### 下一步任务
 
-1. 认证链路联调修复
-   - [ ] 启动后端服务并确认 `GET /health`、`GET /db/ping` 正常。
-   - [ ] 确认后端 `DATABASE_URL`、JWT 配置、migration 状态正确。
-   - [ ] 用 curl 或 Postman 验证 `POST /api/register` 和 `POST /api/login`。
-   - [ ] 若接口成功但前端失败，检查 `frontend/.env` 中 `VITE_API_BASE_URL` 是否指向后端真实地址。
-   - [ ] 若浏览器跨域失败，补齐后端 CORS 配置。
+1. 后端 HTTP 接口联调
+   - [x] 启动后端服务并确认 `GET /health`、`GET /db/ping` 正常。
+   - [x] 确认后端 `DATABASE_URL`、JWT 配置、migration 状态正确。
+   - [x] 用真实 HTTP 请求验证 `POST /api/register` 和 `POST /api/login`。
+   - [x] 补齐后端 CORS 配置，支持本机与当前 VM IP 前端 origin。
+   - [x] 修复空会话调用 `POST /api/sessions/<id>/read` 返回 `500` 的问题。
 
-2. 前端真实接口联调
+2. 前端浏览器真实 HTTP 联调
+   - [x] 配置 `frontend/.env`，让宿主机浏览器访问前端时指向 VM 后端地址。
    - [ ] 注册成功后自动登录并进入 `/chat`。
    - [ ] 刷新页面后通过 `localStorage` 恢复登录态。
    - [ ] 搜索另一个用户并创建私聊会话。

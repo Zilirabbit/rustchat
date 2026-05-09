@@ -55,8 +55,10 @@ rustchat/
 │  │  ├─ connection.md
 │  │  └─ conversation.md
 │  └─ summary/
-│     ├─ phase-1.md
-│     └─ phase-2.md
+│     ├─ README.md
+│     ├─ backend/
+│     ├─ frontend/
+│     └─ integration/
 └─ README.md
 ```
 
