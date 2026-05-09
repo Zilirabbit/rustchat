@@ -198,8 +198,16 @@ Hello, world!
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
 source ~/.bashrc
-nvm install 18
+nvm install 22
+nvm use 22
+nvm alias default 22
 ```
+
+截至现在，Node 官方发布节奏里：
+
+- Node 18 已经 EOL，不建议新项目用。
+- Node 22 仍是 LTS，支持到 2027-04-30。
+- Node 24 是当前 Active LTS，支持到 2028-04-30。
 
 验证安装：
 
@@ -252,6 +260,22 @@ VITE_WS_BASE_URL=ws://<虚拟机IP>:3000
 - 当前只是环境约定，尚未开始初始化 `frontend/`
 - 后端服务仍需要监听 `0.0.0.0:3000`
 - 如果虚拟机配置了代理，`localhost`、`127.0.0.1`、虚拟机内网 IP 应加入 `NO_PROXY / no_proxy`
+
+安装依赖与启动命令：
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 0.0.0.0
+```
+
+如需从零手动补齐依赖：
+
+```bash
+cd frontend
+npm install vue vue-router pinia axios
+npm install -D vite typescript @vitejs/plugin-vue vue-tsc
+```
 
 ---
 
