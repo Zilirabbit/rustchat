@@ -1,5 +1,11 @@
-import { http } from "./http";
+import type { ApiResponse } from "../types/api";
+import type { UserSearchItem } from "../types/chat";
+import { http, unwrapResponse } from "./http";
 
-export function getMe() {
-  return http.get("/me");
+export function searchUsers(keyword: string) {
+  return http
+    .get<ApiResponse<UserSearchItem[]>>("/api/users", {
+      params: { keyword },
+    })
+    .then(unwrapResponse);
 }

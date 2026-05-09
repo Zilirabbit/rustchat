@@ -473,14 +473,17 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 
 ### 任务
 
-- [ ] 登录页
-- [ ] 聊天主页面
-- [ ] 会话列表组件
-- [ ] 消息列表组件
-- [ ] 消息输入框
-- [ ] 登录态管理
-- [ ] 与后端接口联调
-- [ ] 与 WebSocket 联调
+- [x] 登录页
+- [x] 聊天主页面
+- [x] 会话列表组件
+- [x] 消息列表组件
+- [x] 消息输入框
+- [x] 登录态管理
+- [x] 用户搜索组件
+- [x] WebSocket 客户端基础封装
+- [x] 本地 demo 跳过验证入口
+- [~] 与后端接口联调
+- [~] 与 WebSocket 联调
 
 ### 完成标准
 
@@ -488,6 +491,40 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - 可看到会话列表
 - 可发送并接收消息
 - 页面刷新后可恢复基础状态
+
+### 当前状态
+
+- 前端第一版 UI 已完成，可通过 `npm run dev -- --host 0.0.0.0` 访问。
+- 登录页已提供“跳过验证进入”按钮，用于后端认证链路不可用时先查看聊天页面。
+- demo 跳过模式只用于页面预览，不会自动请求受保护接口，也不会建立 WebSocket 连接。
+- 真实注册 / 登录当前仍需继续联调，不能视为完成。
+
+### 下一步任务
+
+1. 认证链路联调修复
+   - [ ] 启动后端服务并确认 `GET /health`、`GET /db/ping` 正常。
+   - [ ] 确认后端 `DATABASE_URL`、JWT 配置、migration 状态正确。
+   - [ ] 用 curl 或 Postman 验证 `POST /api/register` 和 `POST /api/login`。
+   - [ ] 若接口成功但前端失败，检查 `frontend/.env` 中 `VITE_API_BASE_URL` 是否指向后端真实地址。
+   - [ ] 若浏览器跨域失败，补齐后端 CORS 配置。
+
+2. 前端真实接口联调
+   - [ ] 注册成功后自动登录并进入 `/chat`。
+   - [ ] 刷新页面后通过 `localStorage` 恢复登录态。
+   - [ ] 搜索另一个用户并创建私聊会话。
+   - [ ] 拉取 `GET /api/conversations` 并展示会话列表。
+   - [ ] 切换会话时拉取 `GET /api/messages?session_id=<id>&limit=20`。
+   - [ ] 进入会话后调用 `POST /api/sessions/<id>/read`，确认未读数归零。
+
+3. WebSocket 私聊验收
+   - [ ] 使用两个浏览器窗口分别登录两个用户。
+   - [ ] 两端都建立 `GET /ws?token=<jwt>` 连接。
+   - [ ] A 给 B 发送文本消息，A 收到 `message_sent`，B 收到 `receive_message`。
+   - [ ] 收到实时消息后消息列表和会话最近消息同步更新。
+   - [ ] 页面刷新后仍能重新进入会话并看到历史消息。
+
+4. demo 跳过模式收尾
+   - [ ] 真实认证链路稳定后，将“跳过验证进入”改为开发环境专用，或从生产构建中移除。
 
 ---
 
