@@ -72,6 +72,17 @@ async fn real_database_private_chat_flow_works_end_to_end() {
         bob["data"]["user_id"]
     );
 
+    let empty_read = post_json(
+        app.clone(),
+        &format!("/api/sessions/{session_id}/read"),
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(empty_read["message"], "session marked as read");
+    assert_eq!(empty_read["data"]["session_id"], session_id);
+    assert!(empty_read["data"]["last_read_message_id"].is_null());
+
     let (addr, server) = spawn_server(state).await;
     let (mut alice_ws, _) = connect_async(format!("ws://{addr}/ws?token={alice_token}"))
         .await

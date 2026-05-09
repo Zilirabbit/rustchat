@@ -1,5 +1,12 @@
-use axum::{Json, Router, extract::State, middleware, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::{HeaderValue, Method, header},
+    middleware,
+    routing::get,
+};
 use serde::Serialize;
+use tower_http::cors::CorsLayer;
 
 use crate::{
     app::AppState,
@@ -22,7 +29,22 @@ pub fn create_router(state: AppState) -> Router {
         .merge(session::routes::router(state.clone()))
         .merge(user::routes::router(state.clone()))
         .layer(middleware::from_fn(logging::log_request))
+        .layer(cors_layer())
         .with_state(state)
+}
+
+fn cors_layer() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin([
+            HeaderValue::from_static("http://127.0.0.1:5173"),
+            HeaderValue::from_static("http://localhost:5173"),
+            HeaderValue::from_static("http://127.0.0.1:5174"),
+            HeaderValue::from_static("http://localhost:5174"),
+            HeaderValue::from_static("http://192.168.221.131:5173"),
+            HeaderValue::from_static("http://192.168.221.131:5174"),
+        ])
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 
 #[derive(Serialize)]

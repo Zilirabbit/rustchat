@@ -88,7 +88,10 @@ impl SessionRepository for PostgresSessionRepository {
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(row.map(|row| row.try_get("last_message_id")).transpose()?)
+        Ok(row
+            .map(|row| row.try_get::<Option<i64>, _>("last_message_id"))
+            .transpose()?
+            .flatten())
     }
 
     async fn find_private_session_between(
@@ -178,7 +181,7 @@ impl SessionRepository for PostgresSessionRepository {
                 last_read_message_id,
                 last_read_at
             )
-            VALUES ($1, $2, $3, NOW())
+            VALUES ($1, $2, $3::BIGINT, NOW())
             ON CONFLICT (user_id, session_id)
             DO UPDATE SET
                 last_read_message_id = EXCLUDED.last_read_message_id,
