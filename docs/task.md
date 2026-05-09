@@ -435,16 +435,32 @@
 
 ### 前端环境搭建任务
 
-- [ ] 确认前端技术栈：`Vue 3 + TypeScript + Vite`
-- [ ] 确认前端基础依赖：`vue-router`、`pinia`、`axios`
-- [ ] 在项目根目录创建 `frontend/` 应用目录
-- [ ] 初始化 Vite Vue TypeScript 项目
-- [ ] 配置前端 `.env.example`
-- [ ] 配置后端 HTTP API 地址，例如 `VITE_API_BASE_URL`
-- [ ] 配置 WebSocket 地址，例如 `VITE_WS_BASE_URL`
-- [ ] 配置开发服务器监听 `0.0.0.0`，便于 Windows 宿主机访问虚拟机内前端服务
-- [ ] 补充前端启动说明，例如 `npm install`、`npm run dev -- --host 0.0.0.0`
-- [ ] 验证前端 dev server 可从宿主机浏览器访问
+- [x] 确认前端技术栈：`Vue 3 + TypeScript + Vite`
+- [x] 确认前端基础依赖：`vue-router`、`pinia`、`axios`
+- [x] 在项目根目录创建 `frontend/` 应用目录
+- [x] 初始化 Vite Vue TypeScript 项目
+- [x] 配置前端 `.env.example`
+- [x] 配置后端 HTTP API 地址，例如 `VITE_API_BASE_URL`
+- [x] 配置 WebSocket 地址，例如 `VITE_WS_BASE_URL`
+- [x] 配置开发服务器监听 `0.0.0.0`，便于 Windows 宿主机访问虚拟机内前端服务
+- [x] 补充前端启动说明，例如 `npm install`、`npm run dev -- --host 0.0.0.0`
+- [x] 验证前端 dev server 可从宿主机浏览器访问（本机 `curl` 已返回 `200`，宿主机浏览器已确认可访问）
+
+安装依赖与启动命令：
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 0.0.0.0
+```
+
+如需从零手动补齐依赖：
+
+```bash
+cd frontend
+npm install vue vue-router pinia axios
+npm install -D vite typescript @vitejs/plugin-vue vue-tsc
+```
 
 ### 前端环境完成标准
 
