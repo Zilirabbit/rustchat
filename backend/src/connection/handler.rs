@@ -178,22 +178,24 @@ async fn process_client_event(
                     },
                 );
 
-                if !state
-                    .connections
-                    .send_to_user(
-                        result.recipient_user_id,
-                        &ServerEvent::ReceiveMessage {
-                            message: result.message,
-                        },
-                    )
-                    .await
-                {
-                    tracing::debug!(
-                        sender_id = current_user.user_id,
-                        recipient_user_id = result.recipient_user_id,
-                        session_id,
-                        "recipient is offline or websocket push failed"
-                    );
+                for recipient_user_id in result.recipient_user_ids {
+                    if !state
+                        .connections
+                        .send_to_user(
+                            recipient_user_id,
+                            &ServerEvent::ReceiveMessage {
+                                message: result.message.clone(),
+                            },
+                        )
+                        .await
+                    {
+                        tracing::debug!(
+                            sender_id = current_user.user_id,
+                            recipient_user_id,
+                            session_id,
+                            "recipient is offline or websocket push failed"
+                        );
+                    }
                 }
 
                 sent_ok
@@ -269,7 +271,7 @@ mod tests {
             request: SendMessageRequest,
         ) -> AppResult<MessageSendResult> {
             Ok(MessageSendResult {
-                recipient_user_id: 8,
+                recipient_user_ids: vec![8],
                 message: ChatMessagePayload {
                     message_id: 1,
                     session_id: request.session_id,
@@ -277,6 +279,37 @@ mod tests {
                     sender_username: current_user.username.clone(),
                     content: request.content,
                     created_at: "2026-05-03 12:00:00+00".to_string(),
+                },
+            })
+        }
+
+        async fn list_history_messages(
+            &self,
+            _current_user: &CurrentUser,
+            _query: HistoryMessagesQuery,
+        ) -> AppResult<MessageListPage> {
+            unreachable!("connection tests do not query history messages")
+        }
+    }
+
+    struct StubGroupMessageService;
+
+    #[async_trait]
+    impl MessageUseCase for StubGroupMessageService {
+        async fn send_text_message(
+            &self,
+            current_user: &CurrentUser,
+            request: SendMessageRequest,
+        ) -> AppResult<MessageSendResult> {
+            Ok(MessageSendResult {
+                recipient_user_ids: vec![8, 9],
+                message: ChatMessagePayload {
+                    message_id: 2,
+                    session_id: request.session_id,
+                    sender_id: current_user.user_id,
+                    sender_username: current_user.username.clone(),
+                    content: request.content,
+                    created_at: "2026-05-10 12:00:00+00".to_string(),
                 },
             })
         }
@@ -418,5 +451,70 @@ mod tests {
         let recipient_body: Value = serde_json::from_str(&recipient_payload).unwrap();
         assert_eq!(recipient_body["type"], "receive_message");
         assert_eq!(recipient_body["message"]["sender_id"], 7);
+    }
+
+    #[tokio::test]
+    async fn send_message_event_broadcasts_to_group_recipients() {
+        let state = AppState::new_with_services(
+            None,
+            JwtService::new(JwtConfig {
+                secret: "connection-group-message-test-secret".to_string(),
+                expires_in_secs: 3_600,
+                issuer: "rustchat-test".to_string(),
+            }),
+            Arc::new(UnavailableUserService),
+            Arc::new(UnavailableSessionService),
+            Arc::new(StubGroupMessageService),
+        );
+
+        let sender_connection = state.connections.register(7).await;
+        let sender_outbound = sender_connection.sender();
+        let mut sender_receiver = sender_connection.into_receiver();
+
+        let recipient_one_connection = state.connections.register(8).await;
+        let mut recipient_one_receiver = recipient_one_connection.into_receiver();
+        let recipient_two_connection = state.connections.register(9).await;
+        let mut recipient_two_receiver = recipient_two_connection.into_receiver();
+
+        let handled = process_client_event(
+            &state,
+            &CurrentUser {
+                user_id: 7,
+                username: "alice".to_string(),
+            },
+            &sender_outbound,
+            crate::connection::protocol::ClientEvent::SendMessage {
+                session_id: 22,
+                content: "hello group".to_string(),
+            },
+        )
+        .await;
+
+        assert!(handled);
+
+        let sender_payload = sender_receiver.recv().await.unwrap().into_text().unwrap();
+        let sender_body: Value = serde_json::from_str(&sender_payload).unwrap();
+        assert_eq!(sender_body["type"], "message_sent");
+        assert_eq!(sender_body["message"]["content"], "hello group");
+
+        let recipient_one_payload = recipient_one_receiver
+            .recv()
+            .await
+            .unwrap()
+            .into_text()
+            .unwrap();
+        let recipient_one_body: Value = serde_json::from_str(&recipient_one_payload).unwrap();
+        assert_eq!(recipient_one_body["type"], "receive_message");
+        assert_eq!(recipient_one_body["message"], sender_body["message"]);
+
+        let recipient_two_payload = recipient_two_receiver
+            .recv()
+            .await
+            .unwrap()
+            .into_text()
+            .unwrap();
+        let recipient_two_body: Value = serde_json::from_str(&recipient_two_payload).unwrap();
+        assert_eq!(recipient_two_body["type"], "receive_message");
+        assert_eq!(recipient_two_body["message"], sender_body["message"]);
     }
 }

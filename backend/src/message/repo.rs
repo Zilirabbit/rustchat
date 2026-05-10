@@ -6,16 +6,16 @@ use crate::{
     storage::repository::{Repository, RepositoryContext},
 };
 
-use super::model::{HistoryMessage, PrivateSessionAccess, StoredMessage};
+use super::model::{HistoryMessage, SessionMessageAccess, StoredMessage};
 
 #[async_trait]
 pub trait MessageRepository: Send + Sync {
     async fn is_session_member(&self, session_id: i64, user_id: i64) -> AppResult<bool>;
-    async fn get_private_session_access(
+    async fn get_session_message_access(
         &self,
         session_id: i64,
         sender_id: i64,
-    ) -> AppResult<Option<PrivateSessionAccess>>;
+    ) -> AppResult<Option<SessionMessageAccess>>;
     async fn create_text_message(
         &self,
         session_id: i64,
@@ -66,24 +66,29 @@ impl MessageRepository for PostgresMessageRepository {
         Ok(row.is_some())
     }
 
-    async fn get_private_session_access(
+    async fn get_session_message_access(
         &self,
         session_id: i64,
         sender_id: i64,
-    ) -> AppResult<Option<PrivateSessionAccess>> {
+    ) -> AppResult<Option<SessionMessageAccess>> {
         let row = sqlx::query(
             r#"
-            SELECT s.id AS session_id, sm_other.user_id AS recipient_user_id
+            SELECT
+                s.id AS session_id,
+                COALESCE(
+                    ARRAY_AGG(sm_other.user_id ORDER BY sm_other.user_id)
+                        FILTER (WHERE sm_other.user_id IS NOT NULL),
+                    ARRAY[]::BIGINT[]
+                ) AS recipient_user_ids
             FROM sessions s
             JOIN session_members sm_self
               ON sm_self.session_id = s.id
              AND sm_self.user_id = $2
-            JOIN session_members sm_other
+            LEFT JOIN session_members sm_other
               ON sm_other.session_id = s.id
              AND sm_other.user_id <> $2
             WHERE s.id = $1
-              AND s.session_type = 'private'
-            LIMIT 1
+            GROUP BY s.id
             "#,
         )
         .bind(session_id)
@@ -91,7 +96,7 @@ impl MessageRepository for PostgresMessageRepository {
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(map_private_session_access).transpose()
+        row.map(map_session_message_access).transpose()
     }
 
     async fn create_text_message(
@@ -175,10 +180,10 @@ impl MessageRepository for PostgresMessageRepository {
     }
 }
 
-fn map_private_session_access(row: PgRow) -> AppResult<PrivateSessionAccess> {
-    Ok(PrivateSessionAccess {
+fn map_session_message_access(row: PgRow) -> AppResult<SessionMessageAccess> {
+    Ok(SessionMessageAccess {
         session_id: row.try_get("session_id")?,
-        recipient_user_id: row.try_get("recipient_user_id")?,
+        recipient_user_ids: row.try_get("recipient_user_ids")?,
     })
 }
 

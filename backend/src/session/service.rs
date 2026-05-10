@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 
 use crate::{
@@ -6,9 +8,16 @@ use crate::{
 };
 
 use super::{
-    dto::{CreatePrivateSessionRequest, CreatePrivateSessionResponse, MarkSessionReadResponse},
+    dto::{
+        AddGroupMemberRequest, AddGroupMemberResponse, CreateGroupSessionRequest,
+        CreateGroupSessionResponse, CreatePrivateSessionRequest, CreatePrivateSessionResponse,
+        LeaveGroupSessionResponse, MarkSessionReadResponse,
+    },
     repo::SessionRepository,
 };
+
+const MAX_GROUP_NAME_LENGTH: usize = 100;
+const MAX_INITIAL_GROUP_MEMBERS: usize = 100;
 
 #[async_trait]
 pub trait SessionUseCase: Send + Sync {
@@ -17,6 +26,22 @@ pub trait SessionUseCase: Send + Sync {
         current_user: &CurrentUser,
         request: CreatePrivateSessionRequest,
     ) -> AppResult<CreatePrivateSessionResponse>;
+    async fn create_group_session(
+        &self,
+        current_user: &CurrentUser,
+        request: CreateGroupSessionRequest,
+    ) -> AppResult<CreateGroupSessionResponse>;
+    async fn add_group_member(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+        request: AddGroupMemberRequest,
+    ) -> AppResult<AddGroupMemberResponse>;
+    async fn leave_group_session(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+    ) -> AppResult<LeaveGroupSessionResponse>;
     async fn mark_session_read(
         &self,
         current_user: &CurrentUser,
@@ -90,16 +115,134 @@ where
         })
     }
 
+    async fn create_group_session(
+        &self,
+        current_user: &CurrentUser,
+        request: CreateGroupSessionRequest,
+    ) -> AppResult<CreateGroupSessionResponse> {
+        let name = normalize_group_name(&request.name)?;
+        let member_user_ids =
+            normalize_group_member_ids(current_user.user_id, request.member_user_ids)?;
+
+        for member_user_id in &member_user_ids {
+            if !self.repo.user_exists(*member_user_id).await? {
+                return Err(AppError::BadRequest(format!(
+                    "user {member_user_id} does not exist"
+                )));
+            }
+        }
+
+        let session = self
+            .repo
+            .create_group_session(current_user.user_id, &name, &member_user_ids)
+            .await?;
+
+        Ok(CreateGroupSessionResponse {
+            session_id: session.session_id,
+            session_type: "group",
+            name: session.name,
+            created_by: session.created_by,
+            member_user_ids: session.member_user_ids,
+            created_at: session.created_at,
+        })
+    }
+
+    async fn add_group_member(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+        request: AddGroupMemberRequest,
+    ) -> AppResult<AddGroupMemberResponse> {
+        validate_positive_session_id(session_id)?;
+
+        if request.user_id <= 0 {
+            return Err(AppError::BadRequest(
+                "user id must be a positive integer".to_string(),
+            ));
+        }
+
+        let current_member = self
+            .repo
+            .get_group_member(session_id, current_user.user_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::Forbidden("you are not a member of this group session".to_string())
+            })?;
+
+        if current_member.role != "owner" {
+            return Err(AppError::Forbidden(
+                "only group owner can add members".to_string(),
+            ));
+        }
+
+        if !self.repo.user_exists(request.user_id).await? {
+            return Err(AppError::BadRequest("user does not exist".to_string()));
+        }
+
+        if let Some(member) = self
+            .repo
+            .get_group_member(session_id, request.user_id)
+            .await?
+        {
+            return Ok(AddGroupMemberResponse {
+                session_id: member.session_id,
+                user_id: member.user_id,
+                role: member.role,
+                joined_at: member.joined_at,
+                added: false,
+            });
+        }
+
+        let member = self
+            .repo
+            .add_group_member(session_id, request.user_id)
+            .await?;
+
+        Ok(AddGroupMemberResponse {
+            session_id: member.session_id,
+            user_id: member.user_id,
+            role: member.role,
+            joined_at: member.joined_at,
+            added: true,
+        })
+    }
+
+    async fn leave_group_session(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+    ) -> AppResult<LeaveGroupSessionResponse> {
+        validate_positive_session_id(session_id)?;
+
+        if self
+            .repo
+            .get_group_member(session_id, current_user.user_id)
+            .await?
+            .is_none()
+        {
+            return Err(AppError::Forbidden(
+                "you are not a member of this group session".to_string(),
+            ));
+        }
+
+        let left = self
+            .repo
+            .leave_group_session(session_id, current_user.user_id)
+            .await?;
+
+        Ok(LeaveGroupSessionResponse {
+            session_id,
+            user_id: current_user.user_id,
+            left,
+        })
+    }
+
     async fn mark_session_read(
         &self,
         current_user: &CurrentUser,
         session_id: i64,
     ) -> AppResult<MarkSessionReadResponse> {
-        if session_id <= 0 {
-            return Err(AppError::BadRequest(
-                "session id must be a positive integer".to_string(),
-            ));
-        }
+        validate_positive_session_id(session_id)?;
 
         if !self
             .repo
@@ -125,6 +268,63 @@ where
     }
 }
 
+fn validate_positive_session_id(session_id: i64) -> AppResult<()> {
+    if session_id <= 0 {
+        return Err(AppError::BadRequest(
+            "session id must be a positive integer".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn normalize_group_name(name: &str) -> AppResult<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest(
+            "group name cannot be blank".to_string(),
+        ));
+    }
+
+    if name.chars().count() > MAX_GROUP_NAME_LENGTH {
+        return Err(AppError::BadRequest(format!(
+            "group name must be at most {MAX_GROUP_NAME_LENGTH} characters"
+        )));
+    }
+
+    Ok(name.to_string())
+}
+
+fn normalize_group_member_ids(
+    owner_user_id: i64,
+    requested_member_user_ids: Vec<i64>,
+) -> AppResult<Vec<i64>> {
+    if requested_member_user_ids.len() > MAX_INITIAL_GROUP_MEMBERS {
+        return Err(AppError::BadRequest(format!(
+            "group can include at most {MAX_INITIAL_GROUP_MEMBERS} initial members"
+        )));
+    }
+
+    let mut seen = HashSet::new();
+    let mut member_user_ids = Vec::with_capacity(requested_member_user_ids.len() + 1);
+    seen.insert(owner_user_id);
+    member_user_ids.push(owner_user_id);
+
+    for user_id in requested_member_user_ids {
+        if user_id <= 0 {
+            return Err(AppError::BadRequest(
+                "member user ids must be positive integers".to_string(),
+            ));
+        }
+
+        if seen.insert(user_id) {
+            member_user_ids.push(user_id);
+        }
+    }
+
+    Ok(member_user_ids)
+}
+
 #[derive(Default)]
 pub struct UnavailableSessionService;
 
@@ -135,6 +335,31 @@ impl SessionUseCase for UnavailableSessionService {
         _current_user: &CurrentUser,
         _request: CreatePrivateSessionRequest,
     ) -> AppResult<CreatePrivateSessionResponse> {
+        Err(AppError::DbNotConfigured)
+    }
+
+    async fn create_group_session(
+        &self,
+        _current_user: &CurrentUser,
+        _request: CreateGroupSessionRequest,
+    ) -> AppResult<CreateGroupSessionResponse> {
+        Err(AppError::DbNotConfigured)
+    }
+
+    async fn add_group_member(
+        &self,
+        _current_user: &CurrentUser,
+        _session_id: i64,
+        _request: AddGroupMemberRequest,
+    ) -> AppResult<AddGroupMemberResponse> {
+        Err(AppError::DbNotConfigured)
+    }
+
+    async fn leave_group_session(
+        &self,
+        _current_user: &CurrentUser,
+        _session_id: i64,
+    ) -> AppResult<LeaveGroupSessionResponse> {
         Err(AppError::DbNotConfigured)
     }
 
@@ -155,7 +380,7 @@ mod tests {
 
     use super::*;
     use crate::session::{
-        model::{PrivateSession, SessionReadState},
+        model::{GroupSession, PrivateSession, SessionMember, SessionReadState},
         repo::SessionRepository,
     };
 
@@ -164,6 +389,8 @@ mod tests {
         next_session_id: Mutex<i64>,
         users: Mutex<HashMap<i64, bool>>,
         sessions: Mutex<HashMap<(i64, i64), PrivateSession>>,
+        group_sessions: Mutex<HashMap<i64, GroupSession>>,
+        group_members: Mutex<HashMap<(i64, i64), SessionMember>>,
         members: Mutex<HashMap<(i64, i64), bool>>,
         last_message_ids: Mutex<HashMap<i64, Option<i64>>>,
         read_states: Mutex<HashMap<(i64, i64), SessionReadState>>,
@@ -245,6 +472,88 @@ mod tests {
                 .insert(Self::key(created_by, peer_user_id), session.clone());
 
             Ok(session)
+        }
+
+        async fn create_group_session(
+            &self,
+            created_by: i64,
+            name: &str,
+            member_user_ids: &[i64],
+        ) -> AppResult<GroupSession> {
+            let mut next_session_id = self.next_session_id.lock().unwrap();
+            *next_session_id += 1;
+
+            let session = GroupSession {
+                session_id: *next_session_id,
+                name: name.to_string(),
+                created_by,
+                member_user_ids: member_user_ids.to_vec(),
+                created_at: "2026-05-10 12:00:00+00".to_string(),
+            };
+
+            for member_user_id in member_user_ids {
+                let role = if *member_user_id == created_by {
+                    "owner"
+                } else {
+                    "member"
+                };
+                self.group_members.lock().unwrap().insert(
+                    (session.session_id, *member_user_id),
+                    SessionMember {
+                        session_id: session.session_id,
+                        user_id: *member_user_id,
+                        role: role.to_string(),
+                        joined_at: "2026-05-10 12:00:00+00".to_string(),
+                    },
+                );
+            }
+
+            self.group_sessions
+                .lock()
+                .unwrap()
+                .insert(session.session_id, session.clone());
+
+            Ok(session)
+        }
+
+        async fn get_group_member(
+            &self,
+            session_id: i64,
+            user_id: i64,
+        ) -> AppResult<Option<SessionMember>> {
+            Ok(self
+                .group_members
+                .lock()
+                .unwrap()
+                .get(&(session_id, user_id))
+                .cloned())
+        }
+
+        async fn add_group_member(
+            &self,
+            session_id: i64,
+            user_id: i64,
+        ) -> AppResult<SessionMember> {
+            let member = SessionMember {
+                session_id,
+                user_id,
+                role: "member".to_string(),
+                joined_at: "2026-05-10 12:00:00+00".to_string(),
+            };
+            self.group_members
+                .lock()
+                .unwrap()
+                .insert((session_id, user_id), member.clone());
+            Ok(member)
+        }
+
+        async fn leave_group_session(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
+            Ok(self
+                .group_members
+                .lock()
+                .unwrap()
+                .remove(&(session_id, user_id))
+                .is_some())
         }
 
         async fn mark_session_read(
@@ -334,6 +643,131 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(error.status_code(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn create_group_session_creates_owner_and_members() {
+        let repo = FakeSessionRepository::default();
+        repo.users.lock().unwrap().insert(1, true);
+        repo.users.lock().unwrap().insert(2, true);
+        repo.users.lock().unwrap().insert(3, true);
+        let service = SessionService::new(repo);
+
+        let response = service
+            .create_group_session(
+                &current_user(),
+                CreateGroupSessionRequest {
+                    name: " team ".to_string(),
+                    member_user_ids: vec![2, 3, 2],
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.session_type, "group");
+        assert_eq!(response.name, "team");
+        assert_eq!(response.created_by, 1);
+        assert_eq!(response.member_user_ids, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn create_group_session_rejects_missing_member() {
+        let repo = FakeSessionRepository::default();
+        repo.users.lock().unwrap().insert(1, true);
+        let service = SessionService::new(repo);
+
+        let error = service
+            .create_group_session(
+                &current_user(),
+                CreateGroupSessionRequest {
+                    name: "team".to_string(),
+                    member_user_ids: vec![2],
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn add_group_member_requires_owner() {
+        let repo = FakeSessionRepository::default();
+        repo.users.lock().unwrap().insert(2, true);
+        repo.group_members.lock().unwrap().insert(
+            (12, 1),
+            SessionMember {
+                session_id: 12,
+                user_id: 1,
+                role: "member".to_string(),
+                joined_at: "2026-05-10 12:00:00+00".to_string(),
+            },
+        );
+        let service = SessionService::new(repo);
+
+        let error = service
+            .add_group_member(&current_user(), 12, AddGroupMemberRequest { user_id: 2 })
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn add_group_member_returns_existing_members_idempotently() {
+        let repo = FakeSessionRepository::default();
+        repo.users.lock().unwrap().insert(2, true);
+        repo.group_members.lock().unwrap().insert(
+            (12, 1),
+            SessionMember {
+                session_id: 12,
+                user_id: 1,
+                role: "owner".to_string(),
+                joined_at: "2026-05-10 12:00:00+00".to_string(),
+            },
+        );
+        repo.group_members.lock().unwrap().insert(
+            (12, 2),
+            SessionMember {
+                session_id: 12,
+                user_id: 2,
+                role: "member".to_string(),
+                joined_at: "2026-05-10 12:00:00+00".to_string(),
+            },
+        );
+        let service = SessionService::new(repo);
+
+        let response = service
+            .add_group_member(&current_user(), 12, AddGroupMemberRequest { user_id: 2 })
+            .await
+            .unwrap();
+
+        assert_eq!(response.user_id, 2);
+        assert!(!response.added);
+    }
+
+    #[tokio::test]
+    async fn leave_group_session_removes_current_member() {
+        let repo = FakeSessionRepository::default();
+        repo.group_members.lock().unwrap().insert(
+            (12, 1),
+            SessionMember {
+                session_id: 12,
+                user_id: 1,
+                role: "member".to_string(),
+                joined_at: "2026-05-10 12:00:00+00".to_string(),
+            },
+        );
+        let service = SessionService::new(repo);
+
+        let response = service
+            .leave_group_session(&current_user(), 12)
+            .await
+            .unwrap();
+
+        assert_eq!(response.session_id, 12);
+        assert_eq!(response.user_id, 1);
+        assert!(response.left);
     }
 
     #[tokio::test]

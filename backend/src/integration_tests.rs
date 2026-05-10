@@ -172,6 +172,140 @@ async fn real_database_private_chat_flow_works_end_to_end() {
     assert_eq!(conversation_after_read["unread_count"], 0);
 }
 
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL to point at the rustchat_test database"]
+async fn real_database_group_chat_flow_works_end_to_end() {
+    dotenvy::from_filename(".env.test").ok();
+
+    let state = real_database_state().await;
+    reset_test_data(&state).await;
+    let app = create_router(state.clone());
+
+    let suffix = unique_suffix();
+    let alice_username = format!("alice_group_it_{suffix}");
+    let bob_username = format!("bob_group_it_{suffix}");
+    let carol_username = format!("carol_group_it_{suffix}");
+    let password = "secret123";
+
+    let alice = register_user(app.clone(), &alice_username, password).await;
+    let bob = register_user(app.clone(), &bob_username, password).await;
+    let carol = register_user(app.clone(), &carol_username, password).await;
+
+    let alice_token = login_user(app.clone(), &alice_username, password).await;
+    let bob_token = login_user(app.clone(), &bob_username, password).await;
+    let carol_token = login_user(app.clone(), &carol_username, password).await;
+
+    let group = post_json(
+        app.clone(),
+        "/api/sessions/group",
+        Some(&alice_token),
+        json!({
+            "name": "integration team",
+            "member_user_ids": [bob["data"]["user_id"]]
+        }),
+    )
+    .await;
+    let group_id = group["data"]["session_id"]
+        .as_i64()
+        .expect("group session id should be returned");
+    assert_eq!(group["message"], "group session created");
+    assert_eq!(group["data"]["session_type"], "group");
+    assert_eq!(group["data"]["created_by"], alice["data"]["user_id"]);
+    assert_eq!(
+        group["data"]["member_user_ids"].as_array().unwrap().len(),
+        2
+    );
+
+    let added = post_json(
+        app.clone(),
+        &format!("/api/sessions/{group_id}/members"),
+        Some(&alice_token),
+        json!({ "user_id": carol["data"]["user_id"] }),
+    )
+    .await;
+    assert_eq!(added["message"], "group member ready");
+    assert_eq!(added["data"]["user_id"], carol["data"]["user_id"]);
+    assert_eq!(added["data"]["added"], true);
+
+    let (addr, server) = spawn_server(state).await;
+    let (mut alice_ws, _) = connect_async(format!("ws://{addr}/ws?token={alice_token}"))
+        .await
+        .expect("alice websocket should connect");
+    let (mut bob_ws, _) = connect_async(format!("ws://{addr}/ws?token={bob_token}"))
+        .await
+        .expect("bob websocket should connect");
+    let (mut carol_ws, _) = connect_async(format!("ws://{addr}/ws?token={carol_token}"))
+        .await
+        .expect("carol websocket should connect");
+
+    assert_ws_event_type(&mut alice_ws, "connected").await;
+    assert_ws_event_type(&mut bob_ws, "connected").await;
+    assert_ws_event_type(&mut carol_ws, "connected").await;
+
+    alice_ws
+        .send(WsMessage::Text(
+            json!({
+                "type": "send_message",
+                "session_id": group_id,
+                "content": "hello group integration test"
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .expect("alice should send group websocket message");
+
+    let ack = next_ws_json(&mut alice_ws).await;
+    assert_eq!(ack["type"], "message_sent");
+    assert_eq!(ack["message"]["session_id"], group_id);
+    assert_eq!(ack["message"]["sender_id"], alice["data"]["user_id"]);
+
+    let bob_pushed = next_ws_json(&mut bob_ws).await;
+    assert_eq!(bob_pushed["type"], "receive_message");
+    assert_eq!(bob_pushed["message"], ack["message"]);
+
+    let carol_pushed = next_ws_json(&mut carol_ws).await;
+    assert_eq!(carol_pushed["type"], "receive_message");
+    assert_eq!(carol_pushed["message"], ack["message"]);
+
+    alice_ws.close(None).await.ok();
+    bob_ws.close(None).await.ok();
+    carol_ws.close(None).await.ok();
+    server.abort();
+
+    let bob_conversations = get_json(app.clone(), "/api/conversations", Some(&bob_token)).await;
+    let bob_group = bob_conversations["data"]
+        .as_array()
+        .expect("conversations data should be an array")
+        .iter()
+        .find(|item| item["session_id"].as_i64() == Some(group_id))
+        .expect("bob should see the group conversation");
+    assert_eq!(bob_group["session_type"], "group");
+    assert_eq!(bob_group["session_name"], "integration team");
+    assert_eq!(bob_group["last_message"], "hello group integration test");
+    assert_eq!(bob_group["unread_count"], 1);
+
+    let left = delete_json(
+        app.clone(),
+        &format!("/api/sessions/{group_id}/members/me"),
+        Some(&carol_token),
+    )
+    .await;
+    assert_eq!(left["message"], "group session left");
+    assert_eq!(left["data"]["session_id"], group_id);
+    assert_eq!(left["data"]["user_id"], carol["data"]["user_id"]);
+    assert_eq!(left["data"]["left"], true);
+
+    let carol_conversations = get_json(app, "/api/conversations", Some(&carol_token)).await;
+    assert!(
+        !carol_conversations["data"]
+            .as_array()
+            .expect("conversations data should be an array")
+            .iter()
+            .any(|item| item["session_id"].as_i64() == Some(group_id))
+    );
+}
+
 async fn real_database_state() -> AppState {
     let url = std::env::var("TEST_DATABASE_URL")
         .expect("TEST_DATABASE_URL must be set for real database integration tests");
@@ -273,6 +407,15 @@ async fn post_json(app: Router, uri: &str, token: Option<&str>, payload: Value) 
 
 async fn get_json(app: Router, uri: &str, token: Option<&str>) -> Value {
     let mut builder = Request::builder().method("GET").uri(uri);
+    if let Some(token) = token {
+        builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+
+    request_json(app, builder.body(Body::empty()).unwrap()).await
+}
+
+async fn delete_json(app: Router, uri: &str, token: Option<&str>) -> Value {
+    let mut builder = Request::builder().method("DELETE").uri(uri);
     if let Some(token) = token {
         builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
     }

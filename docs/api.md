@@ -378,7 +378,175 @@ curl -X POST http://127.0.0.1:3000/api/sessions/private \
 - `401`：缺少 token 或 token 非法
 - `503`：数据库未配置
 
-### 4.8 标记会话已读
+### 4.8 创建群聊会话
+
+- 方法：`POST`
+- 路径：`/api/sessions/group`
+- 鉴权：是
+- `Content-Type`：`application/json`
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+请求体：
+
+```json
+{
+  "name": "team",
+  "member_user_ids": [2, 3]
+}
+```
+
+说明：
+
+- `name` 会去除首尾空格，长度必须在 `1~100`
+- 当前用户会自动作为 `owner` 加入群聊
+- `member_user_ids` 可为空；重复用户会自动去重
+- 初始成员必须是已存在用户
+
+示例请求：
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/sessions/group \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"team","member_user_ids":[2,3]}'
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "group session created",
+  "data": {
+    "session_id": 22,
+    "session_type": "group",
+    "name": "team",
+    "created_by": 1,
+    "member_user_ids": [1, 2, 3],
+    "created_at": "2026-05-10 12:00:00+00"
+  }
+}
+```
+
+可能错误：
+
+- `400`：群名称为空或过长
+- `400`：成员用户不存在
+- `401`：缺少 token 或 token 非法
+- `503`：数据库未配置
+
+### 4.9 添加群成员
+
+- 方法：`POST`
+- 路径：`/api/sessions/{session_id}/members`
+- 鉴权：是
+- `Content-Type`：`application/json`
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+请求体：
+
+```json
+{
+  "user_id": 4
+}
+```
+
+说明：
+
+- 仅群聊 `owner` 可添加成员
+- 如果目标用户已经在群里，会返回现有成员关系，`added = false`
+
+示例请求：
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/sessions/22/members \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":4}'
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "group member ready",
+  "data": {
+    "session_id": 22,
+    "user_id": 4,
+    "role": "member",
+    "joined_at": "2026-05-10 12:00:00+00",
+    "added": true
+  }
+}
+```
+
+可能错误：
+
+- `400`：`session_id` 或 `user_id` 不合法
+- `400`：目标用户不存在
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是群主，或当前用户不是该群成员
+- `503`：数据库未配置
+
+### 4.10 退出群聊
+
+- 方法：`DELETE`
+- 路径：`/api/sessions/{session_id}/members/me`
+- 鉴权：是
+- 请求体：无
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+说明：
+
+- 仅群成员可退出群聊
+- 群主退出后，如果群里仍有成员，会自动将最早加入的成员提升为 `owner`
+- 最后一名成员退出后，会删除该群聊会话
+
+示例请求：
+
+```bash
+curl -X DELETE http://127.0.0.1:3000/api/sessions/22/members/me \
+  -H "Authorization: Bearer <token>"
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "group session left",
+  "data": {
+    "session_id": 22,
+    "user_id": 1,
+    "left": true
+  }
+}
+```
+
+可能错误：
+
+- `400`：`session_id` 不合法
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是该群成员
+- `503`：数据库未配置
+
+### 4.11 标记会话已读
 
 - 方法：`POST`
 - 路径：`/api/sessions/{session_id}/read`
@@ -426,7 +594,7 @@ curl -X POST http://127.0.0.1:3000/api/sessions/12/read \
 - `403`：当前用户不是该会话成员
 - `503`：数据库未配置
 
-### 4.9 获取会话列表
+### 4.12 获取会话列表
 
 - 方法：`GET`
 - 路径：`/api/conversations`
@@ -484,7 +652,7 @@ curl http://127.0.0.1:3000/api/conversations \
 - `401`：缺少 token 或 token 非法
 - `503`：数据库未配置
 
-### 4.10 查询历史消息
+### 4.13 查询历史消息
 
 - 方法：`GET`
 - 路径：`/api/messages`
@@ -565,7 +733,7 @@ curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_i
 - `403`：当前用户不是该会话成员
 - `503`：数据库未配置
 
-### 4.11 WebSocket 连接
+### 4.14 WebSocket 连接
 
 - 方法：`GET`
 - 路径：`/ws`
@@ -647,7 +815,7 @@ Authorization: Bearer <jwt-token>
 }
 ```
 
-若接收方在线，接收方会收到实时推送：
+若其他会话成员在线，在线成员会收到实时推送：
 
 ```json
 {
@@ -676,7 +844,7 @@ Authorization: Bearer <jwt-token>
 
 - `401`：缺少 token
 - `401`：token 非法或已过期
-- `403`：发送者不是该私聊成员
+- `403`：发送者不是该会话成员
 - `400` / 握手失败：请求头不满足 WebSocket upgrade 要求
 
 ## 5. 建议测试顺序
@@ -691,14 +859,17 @@ Authorization: Bearer <jwt-token>
 6. `GET /api/me`
 7. `GET /api/users?keyword=<username>`
 8. `POST /api/sessions/private`
-9. 连接 `GET /ws?token=<jwt>`
-10. 发送 `{"type":"send_message","session_id":<id>,"content":"hello"}`
-11. `GET /api/conversations`
-12. `GET /api/messages?session_id=<id>&limit=20`
-13. `POST /api/sessions/<id>/read`
-14. 再次 `GET /api/conversations` 验证 `unread_count`
-15. 删除 `Authorization` 再测一次 `/api/me`
-16. 将 token 改成非法值再测一次 `/api/me`
+9. `POST /api/sessions/group`
+10. `POST /api/sessions/<group_id>/members`
+11. 连接 `GET /ws?token=<jwt>`
+12. 发送 `{"type":"send_message","session_id":<id>,"content":"hello"}`
+13. `GET /api/conversations`
+14. `GET /api/messages?session_id=<id>&limit=20`
+15. `POST /api/sessions/<id>/read`
+16. `DELETE /api/sessions/<group_id>/members/me`
+17. 再次 `GET /api/conversations` 验证 `unread_count`
+18. 删除 `Authorization` 再测一次 `/api/me`
+19. 将 token 改成非法值再测一次 `/api/me`
 
 ## 6. 维护约定
 

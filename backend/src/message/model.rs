@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PrivateSessionAccess {
+pub struct SessionMessageAccess {
     pub session_id: i64,
-    pub recipient_user_id: i64,
+    pub recipient_user_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

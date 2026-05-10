@@ -18,7 +18,7 @@ const MAX_HISTORY_MESSAGES_LIMIT: i64 = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageSendResult {
-    pub recipient_user_id: i64,
+    pub recipient_user_ids: Vec<i64>,
     pub message: ChatMessagePayload,
 }
 
@@ -77,7 +77,7 @@ where
 
         let access = self
             .repo
-            .get_private_session_access(request.session_id, current_user.user_id)
+            .get_session_message_access(request.session_id, current_user.user_id)
             .await?
             .ok_or_else(|| {
                 AppError::Forbidden("you are not a member of this session".to_string())
@@ -89,7 +89,7 @@ where
             .await?;
 
         Ok(MessageSendResult {
-            recipient_user_id: access.recipient_user_id,
+            recipient_user_ids: access.recipient_user_ids,
             message: ChatMessagePayload {
                 message_id: stored_message.message_id,
                 session_id: stored_message.session_id,
@@ -204,13 +204,13 @@ mod tests {
 
     use super::*;
     use crate::message::{
-        model::{HistoryMessage, PrivateSessionAccess, StoredMessage},
+        model::{HistoryMessage, SessionMessageAccess, StoredMessage},
         repo::MessageRepository,
     };
 
     #[derive(Default)]
     struct FakeMessageRepository {
-        access: Mutex<HashMap<(i64, i64), PrivateSessionAccess>>,
+        access: Mutex<HashMap<(i64, i64), SessionMessageAccess>>,
         members: Mutex<HashMap<(i64, i64), bool>>,
         history_messages: Mutex<HashMap<i64, Vec<HistoryMessage>>>,
         next_message_id: Mutex<i64>,
@@ -229,11 +229,11 @@ mod tests {
                 .unwrap_or(false))
         }
 
-        async fn get_private_session_access(
+        async fn get_session_message_access(
             &self,
             session_id: i64,
             sender_id: i64,
-        ) -> AppResult<Option<PrivateSessionAccess>> {
+        ) -> AppResult<Option<SessionMessageAccess>> {
             Ok(self
                 .access
                 .lock()
@@ -299,9 +299,9 @@ mod tests {
         let repo = FakeMessageRepository::default();
         repo.access.lock().unwrap().insert(
             (12, 1),
-            PrivateSessionAccess {
+            SessionMessageAccess {
                 session_id: 12,
-                recipient_user_id: 2,
+                recipient_user_ids: vec![2],
             },
         );
 
@@ -317,10 +317,37 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.recipient_user_id, 2);
+        assert_eq!(result.recipient_user_ids, vec![2]);
         assert_eq!(result.message.message_id, 1);
         assert_eq!(result.message.content, "hello");
         assert_eq!(result.message.sender_username, "alice");
+    }
+
+    #[tokio::test]
+    async fn send_text_message_returns_all_group_recipients() {
+        let repo = FakeMessageRepository::default();
+        repo.access.lock().unwrap().insert(
+            (12, 1),
+            SessionMessageAccess {
+                session_id: 12,
+                recipient_user_ids: vec![2, 3],
+            },
+        );
+
+        let service = MessageService::new(repo);
+        let result = service
+            .send_text_message(
+                &current_user(),
+                SendMessageRequest {
+                    session_id: 12,
+                    content: "hello group".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.recipient_user_ids, vec![2, 3]);
+        assert_eq!(result.message.content, "hello group");
     }
 
     #[tokio::test]

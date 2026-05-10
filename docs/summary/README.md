@@ -38,6 +38,7 @@ v0.2.0-phase1-common.md
 - [v0.1.0 - Phase 1 - 历史消息](./backend/v0.1.0-phase1-history-messages.md)
 - [v0.1.0 - Phase 1 - 客户端联调前置接口收口](./backend/v0.1.0-phase1-client-preflight-apis.md)
 - [v0.1.0 - Phase 1 - 真实数据库集成测试](./backend/v0.1.0-phase1-real-db-integration-tests.md)
+- [v0.1.0 - Phase 2 - 群聊系统](./backend/v0.1.0-phase2-group-chat.md)
 
 ### Frontend
 

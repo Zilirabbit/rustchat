@@ -6,7 +6,7 @@ use crate::{
     storage::repository::{Repository, RepositoryContext},
 };
 
-use super::model::{PrivateSession, SessionReadState};
+use super::model::{GroupSession, PrivateSession, SessionMember, SessionReadState};
 
 #[async_trait]
 pub trait SessionRepository: Send + Sync {
@@ -23,6 +23,19 @@ pub trait SessionRepository: Send + Sync {
         created_by: i64,
         peer_user_id: i64,
     ) -> AppResult<PrivateSession>;
+    async fn create_group_session(
+        &self,
+        created_by: i64,
+        name: &str,
+        member_user_ids: &[i64],
+    ) -> AppResult<GroupSession>;
+    async fn get_group_member(
+        &self,
+        session_id: i64,
+        user_id: i64,
+    ) -> AppResult<Option<SessionMember>>;
+    async fn add_group_member(&self, session_id: i64, user_id: i64) -> AppResult<SessionMember>;
+    async fn leave_group_session(&self, session_id: i64, user_id: i64) -> AppResult<bool>;
     async fn mark_session_read(
         &self,
         session_id: i64,
@@ -167,6 +180,187 @@ impl SessionRepository for PostgresSessionRepository {
         Ok(session)
     }
 
+    async fn create_group_session(
+        &self,
+        created_by: i64,
+        name: &str,
+        member_user_ids: &[i64],
+    ) -> AppResult<GroupSession> {
+        let mut tx = self.pool().begin().await?;
+
+        let session_row = sqlx::query(
+            r#"
+            INSERT INTO sessions (session_type, name, created_by)
+            VALUES ('group', $1, $2)
+            RETURNING id, name, created_by, created_at::text AS created_at
+            "#,
+        )
+        .bind(name)
+        .bind(created_by)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let session_id: i64 = session_row.try_get("id")?;
+        for member_user_id in member_user_ids {
+            let role = if *member_user_id == created_by {
+                "owner"
+            } else {
+                "member"
+            };
+
+            sqlx::query(
+                r#"
+                INSERT INTO session_members (session_id, user_id, role)
+                VALUES ($1, $2, $3)
+                "#,
+            )
+            .bind(session_id)
+            .bind(member_user_id)
+            .bind(role)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(GroupSession {
+            session_id,
+            name: session_row.try_get("name")?,
+            created_by: session_row.try_get("created_by")?,
+            member_user_ids: member_user_ids.to_vec(),
+            created_at: session_row.try_get("created_at")?,
+        })
+    }
+
+    async fn get_group_member(
+        &self,
+        session_id: i64,
+        user_id: i64,
+    ) -> AppResult<Option<SessionMember>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                sm.session_id,
+                sm.user_id,
+                sm.role,
+                sm.joined_at::text AS joined_at
+            FROM sessions s
+            JOIN session_members sm
+              ON sm.session_id = s.id
+            WHERE s.id = $1
+              AND s.session_type = 'group'
+              AND sm.user_id = $2
+            "#,
+        )
+        .bind(session_id)
+        .bind(user_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(map_session_member).transpose()
+    }
+
+    async fn add_group_member(&self, session_id: i64, user_id: i64) -> AppResult<SessionMember> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO session_members (session_id, user_id, role)
+            VALUES ($1, $2, 'member')
+            RETURNING
+                session_id,
+                user_id,
+                role,
+                joined_at::text AS joined_at
+            "#,
+        )
+        .bind(session_id)
+        .bind(user_id)
+        .fetch_one(self.pool())
+        .await?;
+
+        map_session_member(row)
+    }
+
+    async fn leave_group_session(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
+        let mut tx = self.pool().begin().await?;
+
+        let deleted = sqlx::query(
+            r#"
+            DELETE FROM session_members sm
+            USING sessions s
+            WHERE sm.session_id = s.id
+              AND s.session_type = 'group'
+              AND sm.session_id = $1
+              AND sm.user_id = $2
+            RETURNING sm.role
+            "#,
+        )
+        .bind(session_id)
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(deleted) = deleted else {
+            tx.commit().await?;
+            return Ok(false);
+        };
+
+        let deleted_role: String = deleted.try_get("role")?;
+        let member_count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM session_members
+            WHERE session_id = $1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if member_count == 0 {
+            sqlx::query("DELETE FROM sessions WHERE id = $1")
+                .bind(session_id)
+                .execute(&mut *tx)
+                .await?;
+        } else if deleted_role == "owner" {
+            let has_owner = sqlx::query(
+                r#"
+                SELECT 1
+                FROM session_members
+                WHERE session_id = $1
+                  AND role = 'owner'
+                LIMIT 1
+                "#,
+            )
+            .bind(session_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .is_some();
+
+            if !has_owner {
+                sqlx::query(
+                    r#"
+                    UPDATE session_members
+                    SET role = 'owner'
+                    WHERE id = (
+                        SELECT id
+                        FROM session_members
+                        WHERE session_id = $1
+                        ORDER BY joined_at, id
+                        LIMIT 1
+                    )
+                    "#,
+                )
+                .bind(session_id)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
+
+        Ok(true)
+    }
+
     async fn mark_session_read(
         &self,
         session_id: i64,
@@ -209,6 +403,15 @@ fn map_private_session(row: PgRow, peer_user_id: i64) -> AppResult<PrivateSessio
         created_by: row.try_get("created_by")?,
         peer_user_id,
         created_at: row.try_get("created_at")?,
+    })
+}
+
+fn map_session_member(row: PgRow) -> AppResult<SessionMember> {
+    Ok(SessionMember {
+        session_id: row.try_get("session_id")?,
+        user_id: row.try_get("user_id")?,
+        role: row.try_get("role")?,
+        joined_at: row.try_get("joined_at")?,
     })
 }
 

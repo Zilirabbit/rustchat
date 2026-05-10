@@ -1,4 +1,7 @@
-use axum::{Router, middleware, routing::post};
+use axum::{
+    Router, middleware,
+    routing::{delete, post},
+};
 
 use crate::{app::AppState, middleware::auth};
 
@@ -9,6 +12,15 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route(
             "/api/sessions/private",
             post(handler::create_private_session),
+        )
+        .route("/api/sessions/group", post(handler::create_group_session))
+        .route(
+            "/api/sessions/{session_id}/members",
+            post(handler::add_group_member),
+        )
+        .route(
+            "/api/sessions/{session_id}/members/me",
+            delete(handler::leave_group_session),
         )
         .route(
             "/api/sessions/{session_id}/read",
@@ -38,7 +50,11 @@ mod tests {
     };
 
     use super::super::{
-        dto::{CreatePrivateSessionRequest, CreatePrivateSessionResponse, MarkSessionReadResponse},
+        dto::{
+            AddGroupMemberRequest, AddGroupMemberResponse, CreateGroupSessionRequest,
+            CreateGroupSessionResponse, CreatePrivateSessionRequest, CreatePrivateSessionResponse,
+            LeaveGroupSessionResponse, MarkSessionReadResponse,
+        },
         service::SessionUseCase,
     };
     use super::router;
@@ -58,6 +74,50 @@ mod tests {
                 peer_user_id: request.target_user_id,
                 created_at: "2026-05-03 12:00:00+00".to_string(),
                 created: true,
+            })
+        }
+
+        async fn create_group_session(
+            &self,
+            current_user: &CurrentUser,
+            request: CreateGroupSessionRequest,
+        ) -> AppResult<CreateGroupSessionResponse> {
+            let mut member_user_ids = vec![current_user.user_id];
+            member_user_ids.extend(request.member_user_ids);
+            Ok(CreateGroupSessionResponse {
+                session_id: 22,
+                session_type: "group",
+                name: request.name,
+                created_by: current_user.user_id,
+                member_user_ids,
+                created_at: "2026-05-10 12:00:00+00".to_string(),
+            })
+        }
+
+        async fn add_group_member(
+            &self,
+            _current_user: &CurrentUser,
+            session_id: i64,
+            request: AddGroupMemberRequest,
+        ) -> AppResult<AddGroupMemberResponse> {
+            Ok(AddGroupMemberResponse {
+                session_id,
+                user_id: request.user_id,
+                role: "member".to_string(),
+                joined_at: "2026-05-10 12:00:00+00".to_string(),
+                added: true,
+            })
+        }
+
+        async fn leave_group_session(
+            &self,
+            current_user: &CurrentUser,
+            session_id: i64,
+        ) -> AppResult<LeaveGroupSessionResponse> {
+            Ok(LeaveGroupSessionResponse {
+                session_id,
+                user_id: current_user.user_id,
+                left: true,
             })
         }
 
@@ -141,6 +201,115 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn create_group_session_endpoint_returns_session() {
+        let jwt = test_jwt_service();
+        let token = jwt.issue_token(1, "alice").unwrap();
+        let state = AppState::new_with_services(
+            None,
+            jwt,
+            Arc::new(UnavailableUserService),
+            Arc::new(StubSessionService),
+            Arc::new(UnavailableMessageService),
+        );
+
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sessions/group")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({ "name": "team", "member_user_ids": [2, 3] }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["message"], "group session created");
+        assert_eq!(body["data"]["session_id"], 22);
+        assert_eq!(body["data"]["session_type"], "group");
+        assert_eq!(body["data"]["name"], "team");
+    }
+
+    #[tokio::test]
+    async fn add_group_member_endpoint_returns_member() {
+        let jwt = test_jwt_service();
+        let token = jwt.issue_token(1, "alice").unwrap();
+        let state = AppState::new_with_services(
+            None,
+            jwt,
+            Arc::new(UnavailableUserService),
+            Arc::new(StubSessionService),
+            Arc::new(UnavailableMessageService),
+        );
+
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sessions/22/members")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "user_id": 2 }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["message"], "group member ready");
+        assert_eq!(body["data"]["session_id"], 22);
+        assert_eq!(body["data"]["user_id"], 2);
+        assert_eq!(body["data"]["added"], true);
+    }
+
+    #[tokio::test]
+    async fn leave_group_session_endpoint_returns_left_state() {
+        let jwt = test_jwt_service();
+        let token = jwt.issue_token(1, "alice").unwrap();
+        let state = AppState::new_with_services(
+            None,
+            jwt,
+            Arc::new(UnavailableUserService),
+            Arc::new(StubSessionService),
+            Arc::new(UnavailableMessageService),
+        );
+
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/sessions/22/members/me")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["message"], "group session left");
+        assert_eq!(body["data"]["session_id"], 22);
+        assert_eq!(body["data"]["user_id"], 1);
+        assert_eq!(body["data"]["left"], true);
     }
 
     #[tokio::test]

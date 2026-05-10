@@ -43,7 +43,7 @@ fn cors_layer() -> CorsLayer {
             HeaderValue::from_static("http://192.168.221.131:5173"),
             HeaderValue::from_static("http://192.168.221.131:5174"),
         ])
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 
