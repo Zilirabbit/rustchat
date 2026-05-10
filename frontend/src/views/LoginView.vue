@@ -1,14 +1,18 @@
 <template>
-  <main class="auth-page">
-    <section class="auth-panel" aria-label="RustChat 登录注册">
-      <div class="auth-brand">
-        <h1>RustChat</h1>
-        <p>登录后开始私聊演示</p>
+  <main class="auth-page mongo-auth-page">
+    <section class="auth-panel mongo-auth-panel" aria-label="Rust Chat 登录注册">
+      <div class="auth-brand mongo-auth-brand">
+        <div class="brand-lockup large">
+          <span class="brand-leaf" aria-hidden="true"></span>
+          <span>Rust Chat</span>
+        </div>
+        <h1>MongoDB-style community chat for builders.</h1>
+        <p>Sign in to open your workspace, join community rooms, and keep private conversations moving in real time.</p>
       </div>
 
       <form class="auth-form" @submit.prevent="submitLogin">
         <label class="field">
-          <span>用户名</span>
+          <span>Username</span>
           <input
             v-model="username"
             class="text-input"
@@ -21,7 +25,7 @@
         </label>
 
         <label class="field">
-          <span>密码</span>
+          <span>Password</span>
           <input
             v-model="password"
             class="text-input"
@@ -37,7 +41,7 @@
 
         <div class="auth-actions">
           <button class="primary-button" type="submit" :disabled="loading">
-            {{ loadingMode === "login" ? "登录中..." : "登录" }}
+            {{ loadingMode === "login" ? "Signing in..." : "Sign in" }}
           </button>
           <button
             class="secondary-button"
@@ -45,7 +49,7 @@
             :disabled="loading"
             @click="submitRegister"
           >
-            {{ loadingMode === "register" ? "注册中..." : "注册" }}
+            {{ loadingMode === "register" ? "Creating..." : "Create account" }}
           </button>
         </div>
 
@@ -55,9 +59,15 @@
           :disabled="loading"
           @click="enterWithoutAuth"
         >
-          跳过验证进入
+          Continue with demo workspace
         </button>
       </form>
+
+      <div class="auth-proof" aria-label="Product highlights">
+        <span>Atlas discussions</span>
+        <span>Private Room</span>
+        <span>Realtime messages</span>
+      </div>
     </section>
   </main>
 </template>
