@@ -24,8 +24,17 @@
     <section class="chat-layout">
       <aside class="sidebar">
         <UserSearch
-          :disabled="chatStore.creatingSession"
+          :disabled="chatStore.creatingSession || chatStore.groupActionInProgress"
           @select-user="openPrivateSession"
+        />
+        <GroupChatPanel
+          :active-conversation="activeConversation"
+          :members="chatStore.activeGroupMembers"
+          :loading-members="chatStore.loadingGroupMembers"
+          :disabled="chatStore.creatingSession || chatStore.groupActionInProgress"
+          @create-group="createGroup"
+          @add-member="addGroupMember"
+          @leave-group="leaveGroup"
         />
         <ConversationList
           :conversations="chatStore.conversations"
@@ -58,7 +67,7 @@
 
         <div v-else class="empty-chat">
           <h1>选择一个会话</h1>
-          <p>从左侧会话列表进入聊天，或搜索用户创建新的私聊。</p>
+          <p>从左侧会话列表进入聊天，或创建私聊和群聊。</p>
         </div>
       </section>
     </section>
@@ -69,6 +78,7 @@
 import { computed, onBeforeUnmount, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import ConversationList from "../components/ConversationList.vue";
+import GroupChatPanel from "../components/GroupChatPanel.vue";
 import MessageInput from "../components/MessageInput.vue";
 import MessageList from "../components/MessageList.vue";
 import UserSearch from "../components/UserSearch.vue";
@@ -119,6 +129,26 @@ onBeforeUnmount(() => {
 
 function openPrivateSession(userId: number) {
   void chatStore.createOrOpenPrivateSession(userId);
+}
+
+function createGroup(name: string, memberUserIds: number[]) {
+  void chatStore.createGroup(name, memberUserIds);
+}
+
+function addGroupMember(userId: number) {
+  if (!chatStore.activeSessionId) {
+    return;
+  }
+
+  void chatStore.addMemberToGroup(chatStore.activeSessionId, userId);
+}
+
+function leaveGroup() {
+  if (!chatStore.activeSessionId) {
+    return;
+  }
+
+  void chatStore.leaveGroup(chatStore.activeSessionId);
 }
 
 function sendMessage(content: string) {

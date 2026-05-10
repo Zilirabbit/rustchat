@@ -15,7 +15,7 @@ use crate::{
 use super::dto::{
     AddGroupMemberRequest, AddGroupMemberResponse, CreateGroupSessionRequest,
     CreateGroupSessionResponse, CreatePrivateSessionRequest, CreatePrivateSessionResponse,
-    LeaveGroupSessionResponse, MarkSessionReadResponse,
+    LeaveGroupSessionResponse, ListGroupMembersResponse, MarkSessionReadResponse,
 };
 
 pub async fn create_private_session(
@@ -56,6 +56,19 @@ pub async fn add_group_member(
         .await?;
 
     Ok(ok("group member ready", member))
+}
+
+pub async fn list_group_members(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Path(session_id): Path<i64>,
+) -> Result<Json<ApiResponse<ListGroupMembersResponse>>, AppError> {
+    let members = state
+        .session_service
+        .list_group_members(&current_user, session_id)
+        .await?;
+
+    Ok(ok("group members ready", members))
 }
 
 pub async fn leave_group_session(

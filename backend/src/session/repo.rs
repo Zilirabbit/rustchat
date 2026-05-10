@@ -6,7 +6,9 @@ use crate::{
     storage::repository::{Repository, RepositoryContext},
 };
 
-use super::model::{GroupSession, PrivateSession, SessionMember, SessionReadState};
+use super::model::{
+    GroupSession, GroupSessionMember, PrivateSession, SessionMember, SessionReadState,
+};
 
 pub struct CreatePrivateSessionResult {
     pub session: PrivateSession,
@@ -39,6 +41,7 @@ pub trait SessionRepository: Send + Sync {
         session_id: i64,
         user_id: i64,
     ) -> AppResult<Option<SessionMember>>;
+    async fn list_group_members(&self, session_id: i64) -> AppResult<Vec<GroupSessionMember>>;
     async fn add_group_member(&self, session_id: i64, user_id: i64) -> AppResult<SessionMember>;
     async fn leave_group_session(&self, session_id: i64, user_id: i64) -> AppResult<bool>;
     async fn mark_session_read(
@@ -312,6 +315,34 @@ impl SessionRepository for PostgresSessionRepository {
         map_session_member(row)
     }
 
+    async fn list_group_members(&self, session_id: i64) -> AppResult<Vec<GroupSessionMember>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                sm.user_id,
+                u.username,
+                sm.role,
+                sm.joined_at::text AS joined_at
+            FROM sessions s
+            JOIN session_members sm
+              ON sm.session_id = s.id
+            JOIN users u
+              ON u.id = sm.user_id
+            WHERE s.id = $1
+              AND s.session_type = 'group'
+            ORDER BY
+                CASE WHEN sm.role = 'owner' THEN 0 ELSE 1 END,
+                sm.joined_at,
+                sm.id
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter().map(map_group_session_member).collect()
+    }
+
     async fn leave_group_session(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
         let mut tx = self.pool().begin().await?;
 
@@ -457,6 +488,15 @@ fn map_session_member(row: PgRow) -> AppResult<SessionMember> {
     Ok(SessionMember {
         session_id: row.try_get("session_id")?,
         user_id: row.try_get("user_id")?,
+        role: row.try_get("role")?,
+        joined_at: row.try_get("joined_at")?,
+    })
+}
+
+fn map_group_session_member(row: PgRow) -> AppResult<GroupSessionMember> {
+    Ok(GroupSessionMember {
+        user_id: row.try_get("user_id")?,
+        username: row.try_get("username")?,
         role: row.try_get("role")?,
         joined_at: row.try_get("joined_at")?,
     })

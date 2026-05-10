@@ -82,6 +82,7 @@ textarea:disabled {
 .auth-form,
 .field,
 .user-search,
+.group-panel,
 .conversation-list {
   display: grid;
   gap: 12px;
@@ -168,6 +169,14 @@ textarea:disabled {
 .secondary-button:hover,
 .icon-button:hover {
   background: #f4f7f8;
+}
+
+.danger-button {
+  color: #9b2418;
+}
+
+.danger-button:hover {
+  background: #fff1ef;
 }
 
 .ghost-button {
@@ -291,7 +300,7 @@ textarea:disabled {
 .sidebar {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 18px;
   border-right: 1px solid #d1dbe1;
   background: #f8fafb;
@@ -317,6 +326,94 @@ textarea:disabled {
 .search-results {
   display: grid;
   gap: 6px;
+}
+
+.group-panel {
+  border-top: 1px solid #e1e7eb;
+  border-bottom: 1px solid #e1e7eb;
+  padding: 14px 0;
+}
+
+.group-block {
+  display: grid;
+  gap: 10px;
+}
+
+.group-block + .group-block {
+  border-top: 1px solid #e1e7eb;
+  padding-top: 12px;
+}
+
+.group-title-row {
+  display: grid;
+  gap: 4px;
+}
+
+.group-title-row strong {
+  overflow: hidden;
+  color: #172026;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-list {
+  display: grid;
+  gap: 6px;
+  max-height: 156px;
+  overflow: auto;
+}
+
+.member-row {
+  min-width: 0;
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: #f6f9fa;
+}
+
+.member-name {
+  overflow: hidden;
+  color: #172026;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-role {
+  color: #5c6f77;
+  font-size: 12px;
+}
+
+.selected-users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.user-chip {
+  border: 1px solid #b8d8df;
+  border-radius: 999px;
+  background: #e7f3f5;
+  color: #155b69;
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.user-chip:hover {
+  background: #d9ebef;
+}
+
+.compact-results {
+  max-height: 148px;
+  overflow: auto;
 }
 
 .search-result,
@@ -353,6 +450,12 @@ textarea:disabled {
   background: #d9ebef;
   color: #155b69;
   font-weight: 800;
+}
+
+.small-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
 }
 
 .conversation-list {

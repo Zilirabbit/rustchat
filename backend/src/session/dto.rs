@@ -46,6 +46,20 @@ pub struct AddGroupMemberResponse {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GroupMemberListItem {
+    pub user_id: i64,
+    pub username: String,
+    pub role: String,
+    pub joined_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ListGroupMembersResponse {
+    pub session_id: i64,
+    pub members: Vec<GroupMemberListItem>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LeaveGroupSessionResponse {
     pub session_id: i64,
     pub user_id: i64,

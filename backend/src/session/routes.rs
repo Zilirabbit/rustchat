@@ -16,7 +16,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/api/sessions/group", post(handler::create_group_session))
         .route(
             "/api/sessions/{session_id}/members",
-            post(handler::add_group_member),
+            post(handler::add_group_member).get(handler::list_group_members),
         )
         .route(
             "/api/sessions/{session_id}/members/me",
@@ -53,7 +53,8 @@ mod tests {
         dto::{
             AddGroupMemberRequest, AddGroupMemberResponse, CreateGroupSessionRequest,
             CreateGroupSessionResponse, CreatePrivateSessionRequest, CreatePrivateSessionResponse,
-            LeaveGroupSessionResponse, MarkSessionReadResponse,
+            GroupMemberListItem, LeaveGroupSessionResponse, ListGroupMembersResponse,
+            MarkSessionReadResponse,
         },
         service::SessionUseCase,
     };
@@ -106,6 +107,30 @@ mod tests {
                 role: "member".to_string(),
                 joined_at: "2026-05-10 12:00:00+00".to_string(),
                 added: true,
+            })
+        }
+
+        async fn list_group_members(
+            &self,
+            _current_user: &CurrentUser,
+            session_id: i64,
+        ) -> AppResult<ListGroupMembersResponse> {
+            Ok(ListGroupMembersResponse {
+                session_id,
+                members: vec![
+                    GroupMemberListItem {
+                        user_id: 1,
+                        username: "alice".to_string(),
+                        role: "owner".to_string(),
+                        joined_at: "2026-05-10 12:00:00+00".to_string(),
+                    },
+                    GroupMemberListItem {
+                        user_id: 2,
+                        username: "bob".to_string(),
+                        role: "member".to_string(),
+                        joined_at: "2026-05-10 12:01:00+00".to_string(),
+                    },
+                ],
             })
         }
 
@@ -310,6 +335,43 @@ mod tests {
         assert_eq!(body["data"]["session_id"], 22);
         assert_eq!(body["data"]["user_id"], 1);
         assert_eq!(body["data"]["left"], true);
+    }
+
+    #[tokio::test]
+    async fn list_group_members_endpoint_returns_members() {
+        let jwt = test_jwt_service();
+        let token = jwt.issue_token(1, "alice").unwrap();
+        let state = AppState::new_with_services(
+            None,
+            jwt,
+            Arc::new(UnavailableUserService),
+            Arc::new(StubSessionService),
+            Arc::new(UnavailableMessageService),
+        );
+
+        let response = router(state.clone())
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/sessions/22/members")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["message"], "group members ready");
+        assert_eq!(body["data"]["session_id"], 22);
+        assert_eq!(body["data"]["members"].as_array().unwrap().len(), 2);
+        assert_eq!(body["data"]["members"][0]["user_id"], 1);
+        assert_eq!(body["data"]["members"][0]["username"], "alice");
+        assert_eq!(body["data"]["members"][0]["role"], "owner");
     }
 
     #[tokio::test]

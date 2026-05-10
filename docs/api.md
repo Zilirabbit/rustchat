@@ -499,7 +499,66 @@ curl -X POST http://127.0.0.1:3000/api/sessions/22/members \
 - `403`：当前用户不是群主，或当前用户不是该群成员
 - `503`：数据库未配置
 
-### 4.10 退出群聊
+### 4.10 查询群成员列表
+
+- 方法：`GET`
+- 路径：`/api/sessions/{session_id}/members`
+- 鉴权：是
+- 请求体：无
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+说明：
+
+- 仅当前群成员可查询该群成员列表
+- 返回成员的 `user_id`、`username`、`role`、`joined_at`
+- `owner` 会排在成员列表前面，其余成员按加入时间排序
+
+示例请求：
+
+```bash
+curl http://127.0.0.1:3000/api/sessions/22/members \
+  -H "Authorization: Bearer <token>"
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "group members ready",
+  "data": {
+    "session_id": 22,
+    "members": [
+      {
+        "user_id": 1,
+        "username": "alice",
+        "role": "owner",
+        "joined_at": "2026-05-10 12:00:00+00"
+      },
+      {
+        "user_id": 2,
+        "username": "bob",
+        "role": "member",
+        "joined_at": "2026-05-10 12:01:00+00"
+      }
+    ]
+  }
+}
+```
+
+可能错误：
+
+- `400`：`session_id` 不合法
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是该群成员
+- `503`：数据库未配置
+
+### 4.11 退出群聊
 
 - 方法：`DELETE`
 - 路径：`/api/sessions/{session_id}/members/me`

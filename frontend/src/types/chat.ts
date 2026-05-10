@@ -22,6 +22,41 @@ export interface CreatePrivateSessionResponse {
   created: boolean;
 }
 
+export interface CreateGroupSessionResponse {
+  session_id: number;
+  session_type: string;
+  name: string;
+  created_by: number;
+  member_user_ids: number[];
+  created_at: string;
+}
+
+export interface AddGroupMemberResponse {
+  session_id: number;
+  user_id: number;
+  role: string;
+  joined_at: string;
+  added: boolean;
+}
+
+export interface GroupMemberListItem {
+  user_id: number;
+  username: string;
+  role: string;
+  joined_at: string;
+}
+
+export interface ListGroupMembersResponse {
+  session_id: number;
+  members: GroupMemberListItem[];
+}
+
+export interface LeaveGroupSessionResponse {
+  session_id: number;
+  user_id: number;
+  left: boolean;
+}
+
 export interface MarkSessionReadResponse {
   session_id: number;
   last_read_message_id: number | null;

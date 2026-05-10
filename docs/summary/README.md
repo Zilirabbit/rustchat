@@ -84,5 +84,7 @@ v0.2.0-phase1-common.md
 
 - `3af1736` 修复浏览器 HTTP API 联调链路中的 CORS、空会话已读和 5xx 排障能力。
 - [v0.1.0 - Phase 5 - 群聊系统](./backend/v0.1.0-phase5-group-chat.md)
+- [v0.1.0 - Phase 5 - 群聊与前端对齐](./frontend/v0.1.0-phase5-group-chat-frontend-alignment.md)
+- [v0.1.1 - phase5.5.1/2 - 群聊成员列表与退出一致性](./frontend/v0.1.1-phase5.5.1-2-group-member-list-and-leave-consistency.md)
 - 私聊一致性补强记录见 Phase 3 的“私聊唯一性约束”。
-- 后续可继续放：双端 WebSocket 验收、群聊前端、未读/已读增强、部署记录。
+- 后续可继续放：双端 WebSocket 验收、未读/已读增强、部署记录。

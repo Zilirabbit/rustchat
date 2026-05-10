@@ -15,3 +15,5 @@
 ## 当前记录
 
 - [v0.1.0 - Phase 4 - 刷新后恢复当前打开的会话](./v0.1.0-phase4-active-session-restore.md)
+- [v0.1.0 - Phase 5 - 群聊与前端对齐](./v0.1.0-phase5-group-chat-frontend-alignment.md)
+- [v0.1.1 - phase5.5.1/2 - 群聊成员列表与退出一致性](./v0.1.1-phase5.5.1-2-group-member-list-and-leave-consistency.md)

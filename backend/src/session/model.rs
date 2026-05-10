@@ -24,6 +24,14 @@ pub struct SessionMember {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupSessionMember {
+    pub user_id: i64,
+    pub username: String,
+    pub role: String,
+    pub joined_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionReadState {
     pub session_id: i64,
     pub user_id: i64,

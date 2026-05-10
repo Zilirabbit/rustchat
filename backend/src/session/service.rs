@@ -11,7 +11,8 @@ use super::{
     dto::{
         AddGroupMemberRequest, AddGroupMemberResponse, CreateGroupSessionRequest,
         CreateGroupSessionResponse, CreatePrivateSessionRequest, CreatePrivateSessionResponse,
-        LeaveGroupSessionResponse, MarkSessionReadResponse,
+        GroupMemberListItem, LeaveGroupSessionResponse, ListGroupMembersResponse,
+        MarkSessionReadResponse,
     },
     repo::SessionRepository,
 };
@@ -37,6 +38,11 @@ pub trait SessionUseCase: Send + Sync {
         session_id: i64,
         request: AddGroupMemberRequest,
     ) -> AppResult<AddGroupMemberResponse>;
+    async fn list_group_members(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+    ) -> AppResult<ListGroupMembersResponse>;
     async fn leave_group_session(
         &self,
         current_user: &CurrentUser,
@@ -208,6 +214,40 @@ where
         })
     }
 
+    async fn list_group_members(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+    ) -> AppResult<ListGroupMembersResponse> {
+        validate_positive_session_id(session_id)?;
+
+        if self
+            .repo
+            .get_group_member(session_id, current_user.user_id)
+            .await?
+            .is_none()
+        {
+            return Err(AppError::Forbidden(
+                "you are not a member of this group session".to_string(),
+            ));
+        }
+
+        let members = self.repo.list_group_members(session_id).await?;
+
+        Ok(ListGroupMembersResponse {
+            session_id,
+            members: members
+                .into_iter()
+                .map(|member| GroupMemberListItem {
+                    user_id: member.user_id,
+                    username: member.username,
+                    role: member.role,
+                    joined_at: member.joined_at,
+                })
+                .collect(),
+        })
+    }
+
     async fn leave_group_session(
         &self,
         current_user: &CurrentUser,
@@ -364,6 +404,14 @@ impl SessionUseCase for UnavailableSessionService {
         Err(AppError::DbNotConfigured)
     }
 
+    async fn list_group_members(
+        &self,
+        _current_user: &CurrentUser,
+        _session_id: i64,
+    ) -> AppResult<ListGroupMembersResponse> {
+        Err(AppError::DbNotConfigured)
+    }
+
     async fn mark_session_read(
         &self,
         _current_user: &CurrentUser,
@@ -381,7 +429,9 @@ mod tests {
 
     use super::*;
     use crate::session::{
-        model::{GroupSession, PrivateSession, SessionMember, SessionReadState},
+        model::{
+            GroupSession, GroupSessionMember, PrivateSession, SessionMember, SessionReadState,
+        },
         repo::{CreatePrivateSessionResult, SessionRepository},
     };
 
@@ -554,6 +604,33 @@ mod tests {
                 .unwrap()
                 .insert((session_id, user_id), member.clone());
             Ok(member)
+        }
+
+        async fn list_group_members(&self, session_id: i64) -> AppResult<Vec<GroupSessionMember>> {
+            let mut members = self
+                .group_members
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|member| member.session_id == session_id)
+                .map(|member| GroupSessionMember {
+                    user_id: member.user_id,
+                    username: format!("user-{}", member.user_id),
+                    role: member.role.clone(),
+                    joined_at: member.joined_at.clone(),
+                })
+                .collect::<Vec<_>>();
+
+            members.sort_by(|left, right| {
+                let left_role_rank = if left.role == "owner" { 0 } else { 1 };
+                let right_role_rank = if right.role == "owner" { 0 } else { 1 };
+                left_role_rank
+                    .cmp(&right_role_rank)
+                    .then_with(|| left.joined_at.cmp(&right.joined_at))
+                    .then_with(|| left.user_id.cmp(&right.user_id))
+            });
+
+            Ok(members)
         }
 
         async fn leave_group_session(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
@@ -812,6 +889,54 @@ mod tests {
         assert_eq!(response.session_id, 12);
         assert_eq!(response.user_id, 1);
         assert!(response.left);
+    }
+
+    #[tokio::test]
+    async fn list_group_members_returns_members_for_current_member() {
+        let repo = FakeSessionRepository::default();
+        repo.group_members.lock().unwrap().insert(
+            (12, 1),
+            SessionMember {
+                session_id: 12,
+                user_id: 1,
+                role: "owner".to_string(),
+                joined_at: "2026-05-10 12:00:00+00".to_string(),
+            },
+        );
+        repo.group_members.lock().unwrap().insert(
+            (12, 2),
+            SessionMember {
+                session_id: 12,
+                user_id: 2,
+                role: "member".to_string(),
+                joined_at: "2026-05-10 12:01:00+00".to_string(),
+            },
+        );
+        let service = SessionService::new(repo);
+
+        let response = service
+            .list_group_members(&current_user(), 12)
+            .await
+            .unwrap();
+
+        assert_eq!(response.session_id, 12);
+        assert_eq!(response.members.len(), 2);
+        assert_eq!(response.members[0].user_id, 1);
+        assert_eq!(response.members[0].username, "user-1");
+        assert_eq!(response.members[0].role, "owner");
+        assert_eq!(response.members[1].user_id, 2);
+    }
+
+    #[tokio::test]
+    async fn list_group_members_rejects_non_member() {
+        let service = SessionService::new(FakeSessionRepository::default());
+
+        let error = service
+            .list_group_members(&current_user(), 12)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
