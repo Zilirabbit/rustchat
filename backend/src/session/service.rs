@@ -101,17 +101,18 @@ where
             });
         }
 
-        let session = self
+        let created_session = self
             .repo
             .create_private_session(current_user.user_id, request.target_user_id)
             .await?;
+        let session = created_session.session;
 
         Ok(CreatePrivateSessionResponse {
             session_id: session.session_id,
             session_type: "private",
             peer_user_id: session.peer_user_id,
             created_at: session.created_at,
-            created: true,
+            created: created_session.created,
         })
     }
 
@@ -381,7 +382,7 @@ mod tests {
     use super::*;
     use crate::session::{
         model::{GroupSession, PrivateSession, SessionMember, SessionReadState},
-        repo::SessionRepository,
+        repo::{CreatePrivateSessionResult, SessionRepository},
     };
 
     #[derive(Default)]
@@ -443,19 +444,24 @@ mod tests {
             user_id: i64,
             peer_user_id: i64,
         ) -> AppResult<Option<PrivateSession>> {
-            Ok(self
+            let session = self
                 .sessions
                 .lock()
                 .unwrap()
                 .get(&Self::key(user_id, peer_user_id))
-                .cloned())
+                .cloned()
+                .map(|mut session| {
+                    session.peer_user_id = peer_user_id;
+                    session
+                });
+            Ok(session)
         }
 
         async fn create_private_session(
             &self,
             created_by: i64,
             peer_user_id: i64,
-        ) -> AppResult<PrivateSession> {
+        ) -> AppResult<CreatePrivateSessionResult> {
             let mut next_session_id = self.next_session_id.lock().unwrap();
             *next_session_id += 1;
 
@@ -471,7 +477,10 @@ mod tests {
                 .unwrap()
                 .insert(Self::key(created_by, peer_user_id), session.clone());
 
-            Ok(session)
+            Ok(CreatePrivateSessionResult {
+                session,
+                created: true,
+            })
         }
 
         async fn create_group_session(
@@ -585,6 +594,13 @@ mod tests {
         }
     }
 
+    fn bob_user() -> CurrentUser {
+        CurrentUser {
+            user_id: 2,
+            username: "bob".to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn create_private_session_creates_new_session() {
         let repo = FakeSessionRepository::default();
@@ -629,6 +645,34 @@ mod tests {
 
         assert_eq!(response.session_id, 9);
         assert!(!response.created);
+    }
+
+    #[tokio::test]
+    async fn create_private_session_reuses_existing_session_from_reverse_direction() {
+        let repo = FakeSessionRepository::default();
+        repo.users.lock().unwrap().insert(1, true);
+        repo.users.lock().unwrap().insert(2, true);
+        let service = SessionService::new(repo);
+
+        let first = service
+            .create_private_session(
+                &current_user(),
+                CreatePrivateSessionRequest { target_user_id: 2 },
+            )
+            .await
+            .unwrap();
+        let second = service
+            .create_private_session(
+                &bob_user(),
+                CreatePrivateSessionRequest { target_user_id: 1 },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(second.session_id, first.session_id);
+        assert_eq!(second.peer_user_id, 1);
+        assert!(first.created);
+        assert!(!second.created);
     }
 
     #[tokio::test]

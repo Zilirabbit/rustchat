@@ -9,3 +9,7 @@
 - 前端 HTTP / WebSocket 客户端封装
 - 浏览器端交互与展示逻辑
 - 前端构建、类型检查和页面验收结果
+
+## 当前记录
+
+- [v0.1.0 - Phase 3 - 刷新后恢复当前打开的会话](./v0.1.0-phase3-active-session-restore.md)

@@ -299,16 +299,21 @@
 - [x] 单点推送给接收方
 - [x] 对发送方返回确认
 - [x] 编写最小链路测试
+- [x] 增加私聊用户对唯一性约束
+- [x] 迁移时删除所有现有私聊数据，保留群聊数据
+- [x] 补充私聊重复创建与并发创建测试
 
 ### 输出物
 
 - session 模块基础能力
 - message 模块基础能力
 - 私聊发送链路
+- `private_session_pairs` 私聊唯一性映射表
 
 ### 完成标准
 
 - 用户可创建私聊会话
+- 同一对用户重复或并发创建私聊时只会得到一个会话
 - 用户可发送私聊消息
 - 接收方在线时可实时收到
 - 消息可在数据库中查询到
@@ -483,15 +488,16 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] WebSocket 客户端基础封装
 - [x] 本地 demo 跳过验证入口
 - [x] 后端 HTTP 接口联调
-- [~] 前端浏览器真实 HTTP 联调
-- [~] 与 WebSocket 联调
+- [x] 前端浏览器真实 HTTP 联调
+- [x] 与 WebSocket 联调
+- [x] 刷新后恢复当前打开的会话
 
 ### 完成标准
 
 - 用户可登录进入聊天页面
 - 可看到会话列表
 - 可发送并接收消息
-- 页面刷新后可恢复基础状态
+- 页面刷新后可恢复登录态、当前打开的会话和历史消息
 
 ### 当前状态
 
@@ -499,7 +505,10 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - 登录页已提供“跳过验证进入”按钮，用于后端认证链路不可用时先查看聊天页面。
 - demo 跳过模式只用于页面预览，不会自动请求受保护接口，也不会建立 WebSocket 连接。
 - 后端 HTTP 主流程已通过真实接口联调：`health -> db/ping -> register -> login -> me -> users search -> create private session -> conversations -> messages -> mark read`。
-- 前端浏览器真实点击流仍需继续验收，不能视为完成。
+- 前端浏览器真实点击流已完成基本验收，可从登录页注册 / 登录进入 `/chat`，并完成用户搜索、创建私聊、会话列表、历史消息与已读接口联调。
+- WebSocket 私聊双窗口验收已完成基本验证，两端可建立连接并完成私聊消息实时收发。
+- 当前打开的会话 ID 已写入浏览器 `localStorage`；刷新 `/chat` 后会重新拉取会话列表、恢复左侧选中状态、自动加载该会话历史消息并重新建立 WebSocket 连接。
+- demo 跳过入口暂时保留为开发预览入口；当前尚未实现服务端 logout / 账号注销，不在本阶段强制移除。
 
 ### 下一步任务
 
@@ -512,22 +521,34 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 
 2. 前端浏览器真实 HTTP 联调
    - [x] 配置 `frontend/.env`，让宿主机浏览器访问前端时指向 VM 后端地址。
-   - [ ] 注册成功后自动登录并进入 `/chat`。
-   - [ ] 刷新页面后通过 `localStorage` 恢复登录态。
-   - [ ] 搜索另一个用户并创建私聊会话。
-   - [ ] 拉取 `GET /api/conversations` 并展示会话列表。
-   - [ ] 切换会话时拉取 `GET /api/messages?session_id=<id>&limit=20`。
-   - [ ] 进入会话后调用 `POST /api/sessions/<id>/read`，确认未读数归零。
+   - [x] 注册成功后自动登录并进入 `/chat`。
+   - [x] 刷新页面后通过 `localStorage` 恢复登录态。
+   - [x] 搜索另一个用户并创建私聊会话。
+   - [x] 拉取 `GET /api/conversations` 并展示会话列表。
+   - [x] 切换会话时拉取 `GET /api/messages?session_id=<id>&limit=20`。
+   - [x] 进入会话后调用 `POST /api/sessions/<id>/read`，确认未读数归零。
 
 3. WebSocket 私聊验收
-   - [ ] 使用两个浏览器窗口分别登录两个用户。
-   - [ ] 两端都建立 `GET /ws?token=<jwt>` 连接。
-   - [ ] A 给 B 发送文本消息，A 收到 `message_sent`，B 收到 `receive_message`。
-   - [ ] 收到实时消息后消息列表和会话最近消息同步更新。
-   - [ ] 页面刷新后仍能重新进入会话并看到历史消息。
+   - [x] 使用两个浏览器窗口分别登录两个用户。
+   - [x] 两端都建立 `GET /ws?token=<jwt>` 连接。
+   - [x] A 给 B 发送文本消息，A 收到 `message_sent`，B 收到 `receive_message`。
+   - [x] 收到实时消息后消息列表和会话最近消息同步更新。
+   - [x] 页面刷新后仍能重新进入会话并看到历史消息。
 
-4. demo 跳过模式收尾
-   - [ ] 真实认证链路稳定后，将“跳过验证进入”改为开发环境专用，或从生产构建中移除。
+4. Phase 3 收尾：刷新后恢复当前打开的会话
+   - [x] 只持久化当前打开的 `activeSessionId`，不持久化消息列表。
+   - [x] 用户手动选择会话或创建私聊后，将当前会话 ID 写入 `localStorage`。
+   - [x] 刷新 `/chat` 后先恢复登录态，再拉取会话列表。
+   - [x] 若缓存的会话仍属于当前用户，则自动选中该会话。
+   - [x] 自动请求 `GET /api/messages?session_id=<id>&limit=20` 加载历史消息。
+   - [x] 自动调用 `POST /api/sessions/<id>/read` 保持已读状态一致。
+   - [x] WebSocket 使用已恢复的 token 自动重连。
+   - [x] 退出登录时清理当前会话缓存。
+
+5. demo 跳过模式约定
+   - [x] 当前保留“跳过验证进入”作为开发预览入口。
+   - [x] demo 跳过模式不自动请求受保护接口，也不建立 WebSocket 连接。
+   - [ ] 后续实现服务端 logout / 账号注销 / 生产构建策略后，再评估是否隐藏或移除该入口。
 
 ---
 
@@ -571,6 +592,7 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] 登录接口真实数据库集成测试
 - [x] `GET /me` 真实数据库集成测试
 - [x] 创建私聊接口测试
+- [x] 私聊重复创建幂等测试
 - [x] 会话列表接口测试
 - [x] 历史消息接口测试
 
@@ -587,6 +609,7 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] 从注册到登录完整链路验证
 - [x] 基于真实数据库的“注册 -> 登录 -> /me”完整链路验证
 - [x] 从登录到聊天完整链路验证
+- [x] 真实数据库私聊并发创建唯一性验证
 - [ ] 刷新页面后历史消息验证
 
 ---

@@ -106,6 +106,7 @@ onMounted(async () => {
   }
 
   await chatStore.loadConversations();
+  await chatStore.restoreActiveConversation();
 
   if (authStore.token) {
     connectionStore.connect(authStore.token);

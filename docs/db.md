@@ -4,7 +4,7 @@
 
 注意：
 
-- 当前以 `backend/migrations/20260423010000_create_chat_core_tables.sql` 作为唯一正式来源
+- 当前以 `backend/migrations/20260423010000_create_chat_core_tables.sql` 和后续增量 migration 作为正式来源
 - 如果手动执行 SQL 创建过表，还需要保证 `_sqlx_migrations` 中存在对应版本记录，否则后续应用启动执行 migration 时会因对象已存在而失败
 
 ## 1. 设计目标
@@ -81,7 +81,32 @@
 
 - `role` 虽然当前版本权限简单，但已为“基础群主模型”预留
 
-### 2.4 `messages`
+### 2.4 `private_session_pairs`
+
+用途：
+
+- 为私聊建立“无序用户对 -> session”的唯一映射
+- 防止同一对用户在并发创建时产生多条 private session
+
+关键字段：
+
+- `session_id`：私聊会话 ID，主键并关联 `sessions(id)`
+- `user_low_id / user_high_id`：按大小排序后的两端用户 ID
+- `created_at`：映射创建时间
+
+约束说明：
+
+- `(user_low_id, user_high_id)` 唯一，保证同一对用户只有一个私聊会话
+- `user_low_id < user_high_id`，避免自己和自己建立私聊 pair
+- 删除私聊 session 时级联删除对应 pair
+
+迁移说明：
+
+- `20260510010000_enforce_private_session_uniqueness.sql` 会先删除所有现有 `private` 会话
+- 删除私聊时会级联清理对应私聊消息、成员关系与已读状态
+- 群聊会话和群聊相关数据不受影响
+
+### 2.5 `messages`
 
 用途：
 
@@ -105,7 +130,7 @@
 - `(session_id, id DESC)`：支持历史消息倒序分页
 - `(sender_id, created_at DESC)`：支持发送者维度排查与扩展查询
 
-### 2.5 `user_session_read_state`
+### 2.6 `user_session_read_state`
 
 用途：
 
@@ -130,6 +155,9 @@
 ## 3. 关键关系
 
 - `sessions.created_by -> users.id`
+- `private_session_pairs.session_id -> sessions.id`
+- `private_session_pairs.user_low_id -> users.id`
+- `private_session_pairs.user_high_id -> users.id`
 - `session_members.session_id -> sessions.id`
 - `session_members.user_id -> users.id`
 - `messages.session_id -> sessions.id`
@@ -140,6 +168,7 @@
 ## 4. 索引与查询意图
 
 - 用户登录：`users_username_lower_uidx`
+- 私聊唯一性：`private_session_pairs_user_pair_uidx`
 - 查询某用户会话列表：`session_members_user_id_idx`
 - 查询最近活跃会话：`sessions_last_message_at_idx`
 - 分页查询历史消息：`messages_session_id_id_desc_idx`
@@ -148,7 +177,6 @@
 ## 5. 当前暂未在表层强约束的规则
 
 - 一个私聊会话只能包含 2 名成员
-- 相同两名用户只能存在一个私聊会话
 - 消息发送者必须是会话成员
 
 这些规则更适合在 `session / message service` 中结合业务流程校验，避免本阶段 migration 复杂度过高。

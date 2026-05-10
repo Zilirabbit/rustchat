@@ -9,6 +9,25 @@ import type {
   WsChatMessage,
 } from "../types/chat";
 
+const ACTIVE_SESSION_STORAGE_KEY = "rustchat.chat.activeSessionId";
+
+function readStoredActiveSessionId() {
+  const rawSessionId = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+
+  if (!rawSessionId) {
+    return null;
+  }
+
+  const sessionId = Number(rawSessionId);
+
+  if (!Number.isSafeInteger(sessionId) || sessionId <= 0) {
+    localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    return null;
+  }
+
+  return sessionId;
+}
+
 function toListItem(message: WsChatMessage): MessageListItem {
   return {
     message_id: message.message_id,
@@ -56,8 +75,29 @@ export const useChatStore = defineStore("chat", {
     },
     async selectConversation(sessionId: number) {
       this.activeSessionId = sessionId;
+      localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, String(sessionId));
 
       await Promise.all([this.loadMessages(sessionId), this.markRead(sessionId)]);
+    },
+    async restoreActiveConversation() {
+      const sessionId = readStoredActiveSessionId();
+
+      if (!sessionId) {
+        return false;
+      }
+
+      const sessionExists = this.conversations.some(
+        (conversation) => conversation.session_id === sessionId,
+      );
+
+      if (!sessionExists) {
+        localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+        this.activeSessionId = null;
+        return false;
+      }
+
+      await this.selectConversation(sessionId);
+      return true;
     },
     async loadMessages(sessionId: number) {
       this.loadingMessages = true;
@@ -165,6 +205,7 @@ export const useChatStore = defineStore("chat", {
       this.loadingMessages = false;
       this.creatingSession = false;
       this.error = "";
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     },
   },
 });

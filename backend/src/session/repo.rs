@@ -8,6 +8,11 @@ use crate::{
 
 use super::model::{GroupSession, PrivateSession, SessionMember, SessionReadState};
 
+pub struct CreatePrivateSessionResult {
+    pub session: PrivateSession,
+    pub created: bool,
+}
+
 #[async_trait]
 pub trait SessionRepository: Send + Sync {
     async fn user_exists(&self, user_id: i64) -> AppResult<bool>;
@@ -22,7 +27,7 @@ pub trait SessionRepository: Send + Sync {
         &self,
         created_by: i64,
         peer_user_id: i64,
-    ) -> AppResult<PrivateSession>;
+    ) -> AppResult<CreatePrivateSessionResult>;
     async fn create_group_session(
         &self,
         created_by: i64,
@@ -112,28 +117,21 @@ impl SessionRepository for PostgresSessionRepository {
         user_id: i64,
         peer_user_id: i64,
     ) -> AppResult<Option<PrivateSession>> {
+        let (user_low_id, user_high_id) = ordered_user_pair(user_id, peer_user_id);
         let row = sqlx::query(
             r#"
             SELECT s.id, s.created_by, s.created_at::text AS created_at
             FROM sessions s
-            JOIN session_members sm1
-              ON sm1.session_id = s.id
-             AND sm1.user_id = $1
-            JOIN session_members sm2
-              ON sm2.session_id = s.id
-             AND sm2.user_id = $2
-            WHERE s.session_type = 'private'
-              AND (
-                    SELECT COUNT(*)
-                    FROM session_members sm
-                    WHERE sm.session_id = s.id
-                  ) = 2
-            ORDER BY s.id
+            JOIN private_session_pairs p
+              ON p.session_id = s.id
+            WHERE p.user_low_id = $1
+              AND p.user_high_id = $2
+              AND s.session_type = 'private'
             LIMIT 1
             "#,
         )
-        .bind(user_id)
-        .bind(peer_user_id)
+        .bind(user_low_id)
+        .bind(user_high_id)
         .fetch_optional(self.pool())
         .await?;
 
@@ -145,7 +143,8 @@ impl SessionRepository for PostgresSessionRepository {
         &self,
         created_by: i64,
         peer_user_id: i64,
-    ) -> AppResult<PrivateSession> {
+    ) -> AppResult<CreatePrivateSessionResult> {
+        let (user_low_id, user_high_id) = ordered_user_pair(created_by, peer_user_id);
         let mut tx = self.pool().begin().await?;
 
         let session_row = sqlx::query(
@@ -160,6 +159,36 @@ impl SessionRepository for PostgresSessionRepository {
         .await?;
 
         let session = map_private_session(session_row, peer_user_id)?;
+
+        let pair_result = sqlx::query(
+            r#"
+            INSERT INTO private_session_pairs (session_id, user_low_id, user_high_id)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(session.session_id)
+        .bind(user_low_id)
+        .bind(user_high_id)
+        .execute(&mut *tx)
+        .await;
+
+        if let Err(error) = pair_result {
+            tx.rollback().await?;
+
+            if is_private_session_pair_unique_violation(&error) {
+                if let Some(existing_session) = self
+                    .find_private_session_between(created_by, peer_user_id)
+                    .await?
+                {
+                    return Ok(CreatePrivateSessionResult {
+                        session: existing_session,
+                        created: false,
+                    });
+                }
+            }
+
+            return Err(error.into());
+        }
 
         sqlx::query(
             r#"
@@ -177,7 +206,10 @@ impl SessionRepository for PostgresSessionRepository {
 
         tx.commit().await?;
 
-        Ok(session)
+        Ok(CreatePrivateSessionResult {
+            session,
+            created: true,
+        })
     }
 
     async fn create_group_session(
@@ -404,6 +436,21 @@ fn map_private_session(row: PgRow, peer_user_id: i64) -> AppResult<PrivateSessio
         peer_user_id,
         created_at: row.try_get("created_at")?,
     })
+}
+
+fn ordered_user_pair(user_id: i64, peer_user_id: i64) -> (i64, i64) {
+    if user_id < peer_user_id {
+        (user_id, peer_user_id)
+    } else {
+        (peer_user_id, user_id)
+    }
+}
+
+fn is_private_session_pair_unique_violation(error: &sqlx::Error) -> bool {
+    error
+        .as_database_error()
+        .and_then(|database_error| database_error.constraint())
+        == Some("private_session_pairs_user_pair_uidx")
 }
 
 fn map_session_member(row: PgRow) -> AppResult<SessionMember> {

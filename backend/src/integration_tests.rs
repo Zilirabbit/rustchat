@@ -5,7 +5,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode, header},
 };
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt, future::join_all};
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
@@ -170,6 +170,105 @@ async fn real_database_private_chat_flow_works_end_to_end() {
         .find(|item| item["session_id"].as_i64() == Some(session_id))
         .expect("bob should still see the private conversation");
     assert_eq!(conversation_after_read["unread_count"], 0);
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL to point at the rustchat_test database"]
+async fn real_database_private_session_creation_is_unique_under_concurrency() {
+    dotenvy::from_filename(".env.test").ok();
+
+    let state = real_database_state().await;
+    reset_test_data(&state).await;
+    let app = create_router(state.clone());
+
+    let suffix = unique_suffix();
+    let alice_username = format!("alice_unique_it_{suffix}");
+    let bob_username = format!("bob_unique_it_{suffix}");
+    let password = "secret123";
+
+    let alice = register_user(app.clone(), &alice_username, password).await;
+    let bob = register_user(app.clone(), &bob_username, password).await;
+    let alice_id = alice["data"]["user_id"]
+        .as_i64()
+        .expect("alice id should be returned");
+    let bob_id = bob["data"]["user_id"]
+        .as_i64()
+        .expect("bob id should be returned");
+    let alice_token = login_user(app.clone(), &alice_username, password).await;
+    let bob_token = login_user(app.clone(), &bob_username, password).await;
+
+    let mut requests = Vec::new();
+    for index in 0..8 {
+        let request_app = app.clone();
+        let token = if index % 2 == 0 {
+            alice_token.clone()
+        } else {
+            bob_token.clone()
+        };
+        let target_user_id = if index % 2 == 0 { bob_id } else { alice_id };
+
+        requests.push(tokio::spawn(async move {
+            post_json(
+                request_app,
+                "/api/sessions/private",
+                Some(&token),
+                json!({ "target_user_id": target_user_id }),
+            )
+            .await
+        }));
+    }
+
+    let responses = join_all(requests).await;
+    let mut session_ids = Vec::new();
+    let mut created_count = 0;
+    for response in responses {
+        let response = response.expect("private session request should join");
+        assert_eq!(response["message"], "private session ready");
+        session_ids.push(
+            response["data"]["session_id"]
+                .as_i64()
+                .expect("session id should be returned"),
+        );
+        if response["data"]["created"].as_bool() == Some(true) {
+            created_count += 1;
+        }
+    }
+
+    let first_session_id = session_ids[0];
+    assert!(session_ids.iter().all(|id| *id == first_session_id));
+    assert_eq!(created_count, 1);
+
+    let storage = state
+        .storage
+        .as_ref()
+        .expect("integration state should include storage");
+    let pair_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM private_session_pairs
+        WHERE user_low_id = LEAST($1, $2)
+          AND user_high_id = GREATEST($1, $2)
+        "#,
+    )
+    .bind(alice_id)
+    .bind(bob_id)
+    .fetch_one(storage.pool())
+    .await
+    .expect("private pair count should be queryable");
+    assert_eq!(pair_count, 1);
+
+    let member_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM session_members
+        WHERE session_id = $1
+        "#,
+    )
+    .bind(first_session_id)
+    .fetch_one(storage.pool())
+    .await
+    .expect("private member count should be queryable");
+    assert_eq!(member_count, 2);
 }
 
 #[tokio::test]
@@ -341,6 +440,7 @@ async fn reset_test_data(state: &AppState) {
         TRUNCATE TABLE
             user_session_read_state,
             messages,
+            private_session_pairs,
             session_members,
             sessions,
             users
