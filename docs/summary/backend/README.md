@@ -2,6 +2,8 @@
 
 后端 summary 用于记录 RustChat 后端模块、数据库、接口、服务端 WebSocket 和后端测试相关阶段结果。
 
+主线阶段索引见上级 [Summary 记录规范](../README.md)。
+
 适合放在这里的内容：
 
 - 后端模块实现

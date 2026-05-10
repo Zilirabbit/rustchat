@@ -2,6 +2,8 @@
 
 前端 summary 用于记录 RustChat 前端页面、状态管理、API 封装和 UI 行为相关阶段结果。
 
+主线阶段索引见上级 [Summary 记录规范](../README.md)。
+
 适合放在这里的内容：
 
 - 前端页面与组件
@@ -12,4 +14,4 @@
 
 ## 当前记录
 
-- [v0.1.0 - Phase 3 - 刷新后恢复当前打开的会话](./v0.1.0-phase3-active-session-restore.md)
+- [v0.1.0 - Phase 4 - 刷新后恢复当前打开的会话](./v0.1.0-phase4-active-session-restore.md)
