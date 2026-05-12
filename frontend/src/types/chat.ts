@@ -72,6 +72,8 @@ export interface ConversationItem {
   unread_count: number;
 }
 
+export type MessageSendStatus = "queued" | "sending" | "sent" | "failed";
+
 export interface MessageListItem {
   message_id: number;
   session_id: number;
@@ -80,6 +82,9 @@ export interface MessageListItem {
   message_type?: string;
   content: string;
   created_at: string;
+  client_message_id?: string;
+  send_status?: MessageSendStatus;
+  send_error?: string;
 }
 
 export interface MessageListPage {
@@ -108,6 +113,10 @@ export type ServerEvent =
       connection_id: number;
     }
   | { type: "pong" }
-  | { type: "message_sent"; message: WsChatMessage }
+  | {
+      type: "message_sent";
+      message: WsChatMessage;
+      client_message_id?: string;
+    }
   | { type: "receive_message"; message: WsChatMessage }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; client_message_id?: string };

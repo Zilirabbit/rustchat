@@ -14,10 +14,13 @@ import type {
   ConversationItem,
   GroupMemberListItem,
   MessageListItem,
+  MessageSendStatus,
   WsChatMessage,
 } from "../types/chat";
 
 const ACTIVE_SESSION_STORAGE_KEY = "rustchat.chat.activeSessionId";
+const MESSAGE_SEND_TIMEOUT_MS = 15000;
+let nextLocalMessageId = 0;
 
 function readStoredActiveSessionId() {
   const rawSessionId = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
@@ -45,7 +48,17 @@ function toListItem(message: WsChatMessage): MessageListItem {
     message_type: "text",
     content: message.content,
     created_at: message.created_at,
+    send_status: "sent",
   };
+}
+
+function createClientMessageId() {
+  nextLocalMessageId += 1;
+  return `local-${Date.now()}-${nextLocalMessageId}`;
+}
+
+function isOutgoingMessage(message: MessageListItem) {
+  return Boolean(message.client_message_id && message.send_status);
 }
 
 export const useChatStore = defineStore("chat", {
@@ -60,6 +73,7 @@ export const useChatStore = defineStore("chat", {
     loadingGroupMembers: false,
     creatingSession: false,
     groupActionInProgress: false,
+    sendTimeoutIdsByClientMessageId: {} as Record<string, number>,
     error: "",
   }),
   getters: {
@@ -133,7 +147,20 @@ export const useChatStore = defineStore("chat", {
 
       try {
         const page = await listMessages(sessionId);
-        this.messagesBySessionId[sessionId] = [...page.messages].reverse();
+        const localPendingMessages = (
+          this.messagesBySessionId[sessionId] || []
+        ).filter(
+          (message) =>
+            isOutgoingMessage(message) && message.send_status !== "sent",
+        );
+        const serverMessages = [...page.messages].reverse().map((message) => ({
+          ...message,
+          send_status: "sent" as MessageSendStatus,
+        }));
+        this.messagesBySessionId[sessionId] = [
+          ...serverMessages,
+          ...localPendingMessages,
+        ];
       } catch (error) {
         this.error = getApiErrorMessage(error);
       } finally {
@@ -292,6 +319,119 @@ export const useChatStore = defineStore("chat", {
       localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, String(sessionId));
       await Promise.all([this.loadMessages(sessionId), this.markRead(sessionId)]);
     },
+    createOutgoingMessage(
+      sessionId: number,
+      content: string,
+      senderId: number,
+      senderUsername: string,
+      sendStatus: MessageSendStatus,
+    ) {
+      const clientMessageId = createClientMessageId();
+      const message: MessageListItem = {
+        message_id: -nextLocalMessageId,
+        session_id: sessionId,
+        sender_id: senderId,
+        sender_username: senderUsername,
+        message_type: "text",
+        content,
+        created_at: new Date().toISOString(),
+        client_message_id: clientMessageId,
+        send_status: sendStatus,
+      };
+      const messages = this.messagesBySessionId[sessionId] || [];
+
+      this.messagesBySessionId[sessionId] = [...messages, message];
+      this.updateOutgoingConversationPreview(message);
+
+      if (sendStatus === "sending") {
+        this.scheduleSendTimeout(clientMessageId);
+      }
+
+      return clientMessageId;
+    },
+    getQueuedOutgoingMessages() {
+      return Object.values(this.messagesBySessionId)
+        .flat()
+        .filter(
+          (message) =>
+            message.client_message_id && message.send_status === "queued",
+        );
+    },
+    markOutgoingMessageSending(clientMessageId: string) {
+      const message = this.findOutgoingMessage(clientMessageId);
+
+      if (!message) {
+        return;
+      }
+
+      message.send_status = "sending";
+      message.send_error = "";
+      this.scheduleSendTimeout(clientMessageId);
+    },
+    markOutgoingMessageQueued(clientMessageId: string, reason = "") {
+      const message = this.findOutgoingMessage(clientMessageId);
+
+      if (!message) {
+        return;
+      }
+
+      message.send_status = "queued";
+      message.send_error = reason;
+      this.clearSendTimeout(clientMessageId);
+    },
+    requeueSendingMessages(reason: string) {
+      Object.values(this.messagesBySessionId)
+        .flat()
+        .filter((message) => message.send_status === "sending")
+        .forEach((message) => {
+          if (message.client_message_id) {
+            this.markOutgoingMessageQueued(message.client_message_id, reason);
+          }
+        });
+    },
+    markOutgoingMessageFailed(clientMessageId: string, reason: string) {
+      const message = this.findOutgoingMessage(clientMessageId);
+
+      if (!message) {
+        return;
+      }
+
+      message.send_status = "failed";
+      message.send_error = reason;
+      this.clearSendTimeout(clientMessageId);
+    },
+    confirmOutgoingMessage(clientMessageId: string, message: WsChatMessage) {
+      this.clearSendTimeout(clientMessageId);
+
+      const confirmedMessage = {
+        ...toListItem(message),
+        client_message_id: clientMessageId,
+        send_status: "sent" as MessageSendStatus,
+      };
+
+      for (const [sessionId, messages] of Object.entries(this.messagesBySessionId)) {
+        const existingIndex = messages.findIndex(
+          (item) => item.client_message_id === clientMessageId,
+        );
+
+        if (existingIndex >= 0) {
+          const withoutDuplicate = messages.filter(
+            (item, index) =>
+              index !== existingIndex && item.message_id !== message.message_id,
+          );
+          withoutDuplicate.splice(
+            Math.min(existingIndex, withoutDuplicate.length),
+            0,
+            confirmedMessage,
+          );
+          this.messagesBySessionId[Number(sessionId)] = withoutDuplicate;
+          this.updateConversationPreview(confirmedMessage);
+          return;
+        }
+      }
+
+      this.appendRealtimeMessage(message);
+    },
     appendRealtimeMessage(message: WsChatMessage) {
       if (this.ignoredSessionIds[message.session_id]) {
         return;
@@ -337,7 +477,57 @@ export const useChatStore = defineStore("chat", {
         ),
       ];
     },
+    updateOutgoingConversationPreview(message: MessageListItem) {
+      const conversation = this.conversations.find(
+        (item) => item.session_id === message.session_id,
+      );
+
+      if (!conversation) {
+        return;
+      }
+
+      conversation.last_message = message.content;
+      conversation.last_message_time = message.created_at;
+      conversation.unread_count = 0;
+      this.conversations = [
+        conversation,
+        ...this.conversations.filter(
+          (item) => item.session_id !== message.session_id,
+        ),
+      ];
+    },
+    findOutgoingMessage(clientMessageId: string) {
+      return Object.values(this.messagesBySessionId)
+        .flat()
+        .find((message) => message.client_message_id === clientMessageId);
+    },
+    scheduleSendTimeout(clientMessageId: string) {
+      this.clearSendTimeout(clientMessageId);
+      this.sendTimeoutIdsByClientMessageId[clientMessageId] = window.setTimeout(
+        () => {
+          this.markOutgoingMessageFailed(clientMessageId, "发送超时，请重试");
+        },
+        MESSAGE_SEND_TIMEOUT_MS,
+      );
+    },
+    clearSendTimeout(clientMessageId: string) {
+      const timeoutId = this.sendTimeoutIdsByClientMessageId[clientMessageId];
+
+      if (!timeoutId) {
+        return;
+      }
+
+      window.clearTimeout(timeoutId);
+      delete this.sendTimeoutIdsByClientMessageId[clientMessageId];
+    },
+    clearSendTimeouts() {
+      Object.values(this.sendTimeoutIdsByClientMessageId).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      this.sendTimeoutIdsByClientMessageId = {};
+    },
     reset() {
+      this.clearSendTimeouts();
       this.conversations = [];
       this.activeSessionId = null;
       this.messagesBySessionId = {};
@@ -348,6 +538,7 @@ export const useChatStore = defineStore("chat", {
       this.loadingGroupMembers = false;
       this.creatingSession = false;
       this.groupActionInProgress = false;
+      this.sendTimeoutIdsByClientMessageId = {};
       this.error = "";
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     },

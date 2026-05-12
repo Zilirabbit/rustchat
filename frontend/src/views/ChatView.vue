@@ -179,6 +179,7 @@
           :messages="activeMessages"
           :current-user-id="authStore.user?.user_id || 0"
           :loading="chatStore.loadingMessages"
+          @retry="retryMessage"
         />
         <div v-else class="empty-chat">
           <h1>No room selected</h1>
@@ -186,7 +187,7 @@
         </div>
 
         <MessageInput
-          :disabled="!connectionStore.connected || !chatStore.activeSessionId"
+          :disabled="!chatStore.activeSessionId"
           @send="sendMessage"
         />
       </section>
@@ -489,11 +490,20 @@ function leaveGroup() {
 }
 
 function sendMessage(content: string) {
-  if (!chatStore.activeSessionId) {
+  if (!chatStore.activeSessionId || !authStore.user) {
     return;
   }
 
-  connectionStore.sendTextMessage(chatStore.activeSessionId, content);
+  connectionStore.sendTextMessage(
+    chatStore.activeSessionId,
+    content,
+    authStore.user.user_id,
+    authStore.user.username,
+  );
+}
+
+function retryMessage(clientMessageId: string) {
+  connectionStore.retryMessage(clientMessageId);
 }
 
 function clearErrors() {

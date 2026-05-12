@@ -7,7 +7,11 @@ use crate::message::dto::ChatMessagePayload;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientEvent {
     Ping,
-    SendMessage { session_id: i64, content: String },
+    SendMessage {
+        session_id: i64,
+        content: String,
+        client_message_id: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -21,12 +25,16 @@ pub enum ServerEvent {
     Pong,
     MessageSent {
         message: ChatMessagePayload,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        client_message_id: Option<String>,
     },
     ReceiveMessage {
         message: ChatMessagePayload,
     },
     Error {
         message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        client_message_id: Option<String>,
     },
 }
 
@@ -60,6 +68,24 @@ mod tests {
             ClientEvent::SendMessage {
                 session_id: 12,
                 content: "hello".to_string(),
+                client_message_id: None,
+            }
+        );
+    }
+
+    #[test]
+    fn send_message_event_can_include_client_message_id() {
+        let event = parse_client_event(
+            r#"{"type":"send_message","session_id":12,"content":"hello","client_message_id":"local-1"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            event,
+            ClientEvent::SendMessage {
+                session_id: 12,
+                content: "hello".to_string(),
+                client_message_id: Some("local-1".to_string()),
             }
         );
     }
@@ -95,5 +121,25 @@ mod tests {
         let text = message.into_text().unwrap();
         assert!(text.contains(r#""type":"receive_message""#));
         assert!(text.contains(r#""message_id":3"#));
+    }
+
+    #[test]
+    fn message_sent_event_can_echo_client_message_id() {
+        let message = server_event_message(&ServerEvent::MessageSent {
+            message: ChatMessagePayload {
+                message_id: 3,
+                session_id: 12,
+                sender_id: 7,
+                sender_username: "alice".to_string(),
+                content: "hello".to_string(),
+                created_at: "2026-05-03 12:00:00+00".to_string(),
+            },
+            client_message_id: Some("local-1".to_string()),
+        })
+        .unwrap();
+
+        let text = message.into_text().unwrap();
+        assert!(text.contains(r#""type":"message_sent""#));
+        assert!(text.contains(r#""client_message_id":"local-1""#));
     }
 }

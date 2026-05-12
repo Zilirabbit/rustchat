@@ -133,6 +133,7 @@ async fn handle_inbound_message(
                 outbound_sender,
                 &ServerEvent::Error {
                     message: "invalid websocket message".to_string(),
+                    client_message_id: None,
                 },
             ),
         },
@@ -140,6 +141,7 @@ async fn handle_inbound_message(
             outbound_sender,
             &ServerEvent::Error {
                 message: "binary websocket message is not supported".to_string(),
+                client_message_id: None,
             },
         ),
         Message::Ping(payload) => outbound_sender.send(Message::Pong(payload)).is_ok(),
@@ -159,6 +161,7 @@ async fn process_client_event(
         ClientEvent::SendMessage {
             session_id,
             content,
+            client_message_id,
         } => match state
             .message_service
             .send_text_message(
@@ -175,6 +178,7 @@ async fn process_client_event(
                     outbound_sender,
                     &ServerEvent::MessageSent {
                         message: result.message.clone(),
+                        client_message_id,
                     },
                 );
 
@@ -204,6 +208,7 @@ async fn process_client_event(
                 outbound_sender,
                 &ServerEvent::Error {
                     message: error.to_string(),
+                    client_message_id,
                 },
             ),
         },
@@ -240,7 +245,10 @@ mod tests {
     use crate::{
         app::AppState,
         auth::{jwt::JwtService, types::CurrentUser},
-        common::{config::JwtConfig, error::AppResult},
+        common::{
+            config::JwtConfig,
+            error::{AppError, AppResult},
+        },
         message::{
             dto::{ChatMessagePayload, HistoryMessagesQuery, MessageListPage, SendMessageRequest},
             service::{MessageSendResult, MessageUseCase},
@@ -312,6 +320,27 @@ mod tests {
                     created_at: "2026-05-10 12:00:00+00".to_string(),
                 },
             })
+        }
+
+        async fn list_history_messages(
+            &self,
+            _current_user: &CurrentUser,
+            _query: HistoryMessagesQuery,
+        ) -> AppResult<MessageListPage> {
+            unreachable!("connection tests do not query history messages")
+        }
+    }
+
+    struct FailingMessageService;
+
+    #[async_trait]
+    impl MessageUseCase for FailingMessageService {
+        async fn send_text_message(
+            &self,
+            _current_user: &CurrentUser,
+            _request: SendMessageRequest,
+        ) -> AppResult<MessageSendResult> {
+            Err(AppError::BadRequest("message rejected".to_string()))
         }
 
         async fn list_history_messages(
@@ -431,6 +460,7 @@ mod tests {
             crate::connection::protocol::ClientEvent::SendMessage {
                 session_id: 12,
                 content: "hello".to_string(),
+                client_message_id: Some("local-1".to_string()),
             },
         )
         .await;
@@ -441,6 +471,7 @@ mod tests {
         let sender_body: Value = serde_json::from_str(&sender_payload).unwrap();
         assert_eq!(sender_body["type"], "message_sent");
         assert_eq!(sender_body["message"]["content"], "hello");
+        assert_eq!(sender_body["client_message_id"], "local-1");
 
         let recipient_payload = recipient_receiver
             .recv()
@@ -486,6 +517,7 @@ mod tests {
             crate::connection::protocol::ClientEvent::SendMessage {
                 session_id: 22,
                 content: "hello group".to_string(),
+                client_message_id: None,
             },
         )
         .await;
@@ -516,5 +548,47 @@ mod tests {
         let recipient_two_body: Value = serde_json::from_str(&recipient_two_payload).unwrap();
         assert_eq!(recipient_two_body["type"], "receive_message");
         assert_eq!(recipient_two_body["message"], sender_body["message"]);
+    }
+
+    #[tokio::test]
+    async fn send_message_error_echoes_client_message_id() {
+        let state = AppState::new_with_services(
+            None,
+            JwtService::new(JwtConfig {
+                secret: "connection-message-error-test-secret".to_string(),
+                expires_in_secs: 3_600,
+                issuer: "rustchat-test".to_string(),
+            }),
+            Arc::new(UnavailableUserService),
+            Arc::new(UnavailableSessionService),
+            Arc::new(FailingMessageService),
+        );
+
+        let sender_connection = state.connections.register(7).await;
+        let sender_outbound = sender_connection.sender();
+        let mut sender_receiver = sender_connection.into_receiver();
+
+        let handled = process_client_event(
+            &state,
+            &CurrentUser {
+                user_id: 7,
+                username: "alice".to_string(),
+            },
+            &sender_outbound,
+            crate::connection::protocol::ClientEvent::SendMessage {
+                session_id: 12,
+                content: "hello".to_string(),
+                client_message_id: Some("local-failed".to_string()),
+            },
+        )
+        .await;
+
+        assert!(handled);
+
+        let sender_payload = sender_receiver.recv().await.unwrap().into_text().unwrap();
+        let sender_body: Value = serde_json::from_str(&sender_payload).unwrap();
+        assert_eq!(sender_body["type"], "error");
+        assert_eq!(sender_body["message"], "message rejected");
+        assert_eq!(sender_body["client_message_id"], "local-failed");
     }
 }
