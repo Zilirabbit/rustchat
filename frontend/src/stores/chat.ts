@@ -267,6 +267,31 @@ export const useChatStore = defineStore("chat", {
         this.error = getApiErrorMessage(error);
       }
     },
+    async recoverAfterReconnect() {
+      const sessionId = this.activeSessionId;
+
+      await this.loadConversations();
+
+      if (!sessionId || this.error) {
+        return;
+      }
+
+      const sessionExists = this.conversations.some(
+        (conversation) => conversation.session_id === sessionId,
+      );
+
+      if (!sessionExists) {
+        this.activeSessionId = null;
+        delete this.messagesBySessionId[sessionId];
+        delete this.groupMembersBySessionId[sessionId];
+        localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+        return;
+      }
+
+      this.activeSessionId = sessionId;
+      localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, String(sessionId));
+      await Promise.all([this.loadMessages(sessionId), this.markRead(sessionId)]);
+    },
     appendRealtimeMessage(message: WsChatMessage) {
       if (this.ignoredSessionIds[message.session_id]) {
         return;

@@ -55,11 +55,18 @@ export const useConnectionStore = defineStore("connection", {
           return;
         }
 
+        const recoveredFromReconnect =
+          this.reconnecting || this.reconnectAttempts > 0;
+
         this.connected = true;
         this.connecting = false;
         this.reconnecting = false;
         this.reconnectAttempts = 0;
         this.lastError = "";
+
+        if (recoveredFromReconnect) {
+          void chatStore.recoverAfterReconnect();
+        }
       };
 
       socket.onmessage = (event) => {
