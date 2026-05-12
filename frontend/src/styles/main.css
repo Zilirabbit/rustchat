@@ -392,6 +392,18 @@ svg {
   color: #00684a;
 }
 
+.connection-pill.reconnecting {
+  border-color: #a6d4d0;
+  background: #eef9f7;
+  color: #0f6460;
+}
+
+.connection-pill.offline {
+  border-color: #e7b5a4;
+  background: #fff2ed;
+  color: #9d3f1d;
+}
+
 .room-section,
 .private-results {
   display: grid;

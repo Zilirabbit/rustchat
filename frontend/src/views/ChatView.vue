@@ -12,7 +12,7 @@
             <span class="brand-leaf" aria-hidden="true"></span>
             <strong>Rust Chat</strong>
           </div>
-          <span class="connection-pill" :class="{ online: connectionStore.connected }">
+          <span class="connection-pill" :class="connectionStatusClass">
             {{ connectionLabel }}
           </span>
         </div>
@@ -308,12 +308,24 @@ const connectionLabel = computed(() => {
     return "Realtime online";
   }
 
+  if (connectionStore.reconnecting) {
+    return `Reconnecting ${connectionStore.reconnectAttempts}/${connectionStore.maxReconnectAttempts}`;
+  }
+
   if (connectionStore.connecting) {
     return "Connecting";
   }
 
   return "Offline";
 });
+const connectionStatusClass = computed(() => ({
+  online: connectionStore.connected,
+  reconnecting: connectionStore.reconnecting,
+  offline:
+    !connectionStore.connected &&
+    !connectionStore.connecting &&
+    !connectionStore.reconnecting,
+}));
 const groupConversations = computed(() =>
   chatStore.conversations.filter(
     (conversation) => conversation.session_type === "group",

@@ -17,4 +17,5 @@
 - [v0.1.0 - Phase 4 - 刷新后恢复当前打开的会话](./v0.1.0-phase4-active-session-restore.md)
 - [v0.1.0 - Phase 5 - 群聊与前端对齐](./v0.1.0-phase5-group-chat-frontend-alignment.md)
 - [v0.1.1 - phase5.5.1/2 - 群聊成员列表与退出一致性](./v0.1.1-phase5.5.1-2-group-member-list-and-leave-consistency.md)
+- [v0.1.1 - phase5.5.3 - WebSocket 自动重连与连接状态提示](./v0.1.1-phase5.5.3-websocket-reconnect.md)
 - [v0.1.0 - phase6 - 前端真实数据最小展示、CSS 重构与设计资产入库](./v0.1.0-phase6-real-data-ui-and-design-assets.md)
