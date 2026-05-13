@@ -30,3 +30,6 @@ dist/
 frontend/dist/
 coverage/
 .vite/
+
+#Uploaded files
+uploads/

@@ -37,15 +37,24 @@ function readStoredActiveSessionId() {
 }
 
 function toListItem(message: WsChatMessage): MessageListItem {
-  return {
+  const item: MessageListItem = {
     message_id: message.message_id,
     session_id: message.session_id,
     sender_id: message.sender_id,
     sender_username: message.sender_username,
-    message_type: "text",
+    message_type: message.message_type || "text",
     content: message.content,
     created_at: message.created_at,
   };
+
+  if (message.file_id != null) {
+    item.file_id = message.file_id;
+    item.file_name = message.file_name;
+    item.file_size = message.file_size;
+    item.file_type = message.file_type;
+  }
+
+  return item;
 }
 
 export const useChatStore = defineStore("chat", {

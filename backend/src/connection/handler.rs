@@ -277,8 +277,13 @@ mod tests {
                     session_id: request.session_id,
                     sender_id: current_user.user_id,
                     sender_username: current_user.username.clone(),
+                    message_type: "text".to_string(),
                     content: request.content,
                     created_at: "2026-05-03 12:00:00+00".to_string(),
+                    file_id: None,
+                    file_name: None,
+                    file_size: None,
+                    file_type: None,
                 },
             })
         }
@@ -308,8 +313,13 @@ mod tests {
                     session_id: request.session_id,
                     sender_id: current_user.user_id,
                     sender_username: current_user.username.clone(),
+                    message_type: "text".to_string(),
                     content: request.content,
                     created_at: "2026-05-10 12:00:00+00".to_string(),
+                    file_id: None,
+                    file_name: None,
+                    file_size: None,
+                    file_type: None,
                 },
             })
         }

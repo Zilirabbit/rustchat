@@ -80,6 +80,10 @@ export interface MessageListItem {
   message_type?: string;
   content: string;
   created_at: string;
+  file_id?: number | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  file_type?: string | null;
 }
 
 export interface MessageListPage {
@@ -98,6 +102,11 @@ export interface WsChatMessage {
   sender_username: string;
   content: string;
   created_at: string;
+  message_type?: string;
+  file_id?: number | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  file_type?: string | null;
 }
 
 export type ServerEvent =

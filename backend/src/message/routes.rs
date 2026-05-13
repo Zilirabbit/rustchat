@@ -68,6 +68,10 @@ mod tests {
                     message_type: "text".to_string(),
                     content: "hello".to_string(),
                     created_at: "2026-05-03 12:00:00+00".to_string(),
+                    file_id: None,
+                    file_name: None,
+                    file_size: None,
+                    file_type: None,
                 }],
             })
         }

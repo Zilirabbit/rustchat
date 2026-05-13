@@ -35,6 +35,9 @@ pub enum AppError {
     #[error("{0}")]
     Conflict(String),
 
+    #[error("{0}")]
+    NotFound(String),
+
     #[error("database is not configured")]
     DbNotConfigured,
 }
@@ -54,6 +57,7 @@ impl AppError {
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::Conflict(_) => StatusCode::CONFLICT,
+            AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::DbNotConfigured => StatusCode::SERVICE_UNAVAILABLE,
         }
     }

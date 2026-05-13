@@ -3,6 +3,7 @@ mod auth;
 mod common;
 mod connection;
 mod conversation;
+mod file;
 #[cfg(test)]
 mod integration_tests;
 mod message;
@@ -32,6 +33,12 @@ async fn main() -> AppResult<()> {
         tracing::info!("database pool initialized and migrations applied");
     } else {
         tracing::warn!("DATABASE_URL is not set; starting without database connectivity");
+    }
+
+    // Start background cleanup task for expired files
+    if let Some(ref file_service) = state.file_service {
+        file_service.clone().start_cleanup_task();
+        tracing::info!("file cleanup task started");
     }
 
     let app = create_router(state);

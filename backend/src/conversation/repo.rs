@@ -45,7 +45,14 @@ impl ConversationRepository for PostgresConversationRepository {
                     END,
                     'unknown session'
                 ) AS session_name,
-                last_message.content AS last_message,
+                CASE
+                    WHEN last_message.message_type = 'file'
+                    THEN COALESCE(
+                        last_message.content::json ->> 'file_name',
+                        last_message.content
+                    )
+                    ELSE last_message.content
+                END AS last_message,
                 s.last_message_at::text AS last_message_time,
                 COALESCE(unread.unread_count, 0) AS unread_count
             FROM session_members sm

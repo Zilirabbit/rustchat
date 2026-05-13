@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub log_level: String,
     pub database: Option<DatabaseConfig>,
     pub jwt: JwtConfig,
+    pub upload_dir: String,
 }
 
 #[derive(Debug, Clone)]
@@ -62,12 +63,15 @@ impl AppConfig {
             issuer: read_string_env("JWT_ISSUER", "rustchat"),
         };
 
+        let upload_dir = read_string_env("UPLOAD_DIR", "./uploads");
+
         Ok(Self {
             app_host,
             app_port,
             log_level,
             database,
             jwt,
+            upload_dir,
         })
     }
 }
