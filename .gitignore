@@ -31,5 +31,8 @@ frontend/dist/
 coverage/
 .vite/
 
-#Uploaded files
+# Uploaded files
 uploads/
+
+# Claude
+.claude/
