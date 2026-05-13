@@ -322,14 +322,19 @@ svg {
 }
 
 .mongo-chat-shell {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   display: block;
+  overflow: hidden;
   background: #f4f7f6;
   padding: 10px;
 }
 
 .chat-layout {
-  min-height: calc(100vh - 20px);
+  height: calc(100vh - 20px);
+  height: calc(100dvh - 20px);
+  min-height: 0;
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr) 350px;
   overflow: hidden;
@@ -765,7 +770,9 @@ svg {
 
 .message-list {
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1142,7 +1149,9 @@ svg {
   }
 
   .chat-layout {
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
     border: 0;
