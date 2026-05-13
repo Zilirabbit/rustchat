@@ -188,7 +188,11 @@
 
         <MessageInput
           :disabled="!chatStore.activeSessionId"
+          :uploading="uploadProgress !== null"
+          :upload-file-name="uploadFileName"
+          :upload-progress="uploadProgress"
           @send="sendMessage"
+          @file-selected="onFileSelected"
         />
       </section>
 
@@ -278,6 +282,7 @@ import { searchUsers } from "../api/users";
 import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
 import { useConnectionStore } from "../stores/connection";
+import { uploadFile } from "../api/files";
 import type { UserSearchItem } from "../types/chat";
 
 const router = useRouter();
@@ -298,6 +303,8 @@ const addKeyword = ref("");
 const addSearchLoading = ref(false);
 const addSearchError = ref("");
 const addCandidates = ref<UserSearchItem[]>([]);
+const uploadProgress = ref<number | null>(null);
+const uploadFileName = ref("");
 
 const activeConversation = computed(() => chatStore.activeConversation);
 const activeMessages = computed(() => chatStore.activeMessages);
@@ -487,6 +494,35 @@ function leaveGroup() {
   }
 
   void chatStore.leaveGroup(chatStore.activeSessionId);
+}
+
+async function onFileSelected(file: File) {
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return;
+
+  if (!connectionStore.connected) {
+    chatStore.error = "文件上传需要实时连接，请重连后再试";
+    return;
+  }
+
+  if (file.size > 100 * 1024 * 1024) {
+    chatStore.error = "文件大小不能超过 100MB";
+    return;
+  }
+
+  uploadFileName.value = file.name;
+  uploadProgress.value = 0;
+
+  try {
+    await uploadFile(sessionId, file, (current, total) => {
+      uploadProgress.value = Math.round((current / total) * 100);
+    });
+  } catch (error) {
+    chatStore.error = getApiErrorMessage(error);
+  } finally {
+    uploadProgress.value = null;
+    uploadFileName.value = "";
+  }
 }
 
 function sendMessage(content: string) {

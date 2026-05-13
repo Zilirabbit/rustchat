@@ -95,8 +95,13 @@ where
                 session_id: stored_message.session_id,
                 sender_id: stored_message.sender_id,
                 sender_username: current_user.username.clone(),
+                message_type: "text".to_string(),
                 content: stored_message.content,
                 created_at: stored_message.created_at,
+                file_id: None,
+                file_name: None,
+                file_size: None,
+                file_type: None,
             },
         })
     }
@@ -160,14 +165,27 @@ where
             has_more,
             messages: messages
                 .into_iter()
-                .map(|message| MessageListItem {
-                    message_id: message.message_id,
-                    session_id: message.session_id,
-                    sender_id: message.sender_id,
-                    sender_username: message.sender_username,
-                    message_type: message.message_type,
-                    content: message.content,
-                    created_at: message.created_at,
+                .map(|message| {
+                    let (display_content, file_id, file_name, file_size, file_type) =
+                        if message.message_type == "file" {
+                            extract_file_meta(&message.content)
+                        } else {
+                            (message.content.clone(), None, None, None, None)
+                        };
+
+                    MessageListItem {
+                        message_id: message.message_id,
+                        session_id: message.session_id,
+                        sender_id: message.sender_id,
+                        sender_username: message.sender_username,
+                        message_type: message.message_type,
+                        content: display_content,
+                        created_at: message.created_at,
+                        file_id,
+                        file_name,
+                        file_size,
+                        file_type,
+                    }
                 })
                 .collect(),
         })
@@ -193,6 +211,51 @@ impl MessageUseCase for UnavailableMessageService {
         _query: HistoryMessagesQuery,
     ) -> AppResult<MessageListPage> {
         Err(AppError::DbNotConfigured)
+    }
+}
+
+/// For file-type messages, the content is a JSON string with file metadata.
+/// Returns (display_content, file_id, file_name, file_size, file_type).
+fn extract_file_meta(
+    content: &str,
+) -> (
+    String,
+    Option<i64>,
+    Option<String>,
+    Option<i64>,
+    Option<String>,
+) {
+    match serde_json::from_str::<serde_json::Value>(content) {
+        Ok(json) => {
+            let file_name = json
+                .get("file_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("file")
+                .to_string();
+            let file_id = json.get("file_id").and_then(|v| v.as_i64());
+            let file_size = json.get("file_size").and_then(|v| v.as_i64());
+            let file_type = json
+                .get("file_type")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            (
+                file_name.clone(),
+                file_id,
+                Some(file_name),
+                file_size,
+                file_type,
+            )
+        }
+        Err(_) => {
+            // Fallback: treat content as the filename
+            (
+                content.to_string(),
+                None,
+                Some(content.to_string()),
+                None,
+                None,
+            )
+        }
     }
 }
 
@@ -499,6 +562,10 @@ mod tests {
             message_type: "text".to_string(),
             content: content.to_string(),
             created_at: "2026-05-03 12:00:00+00".to_string(),
+            file_id: None,
+            file_name: None,
+            file_size: None,
+            file_type: None,
         }
     }
 }

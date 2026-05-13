@@ -5,7 +5,13 @@
         <path d="M12 5v14M5 12h14" />
       </svg>
     </button>
-    <button class="composer-tool" type="button" aria-label="Attach file">
+    <input
+      ref="fileInputRef"
+      type="file"
+      class="file-input-hidden"
+      @change="onFileSelected"
+    />
+    <button class="composer-tool" type="button" aria-label="Attach file" @click="triggerFilePicker">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="m21.4 11.6-8.5 8.5a5 5 0 0 1-7.1-7.1l9.2-9.2a3.4 3.4 0 0 1 4.8 4.8l-9.2 9.2a1.8 1.8 0 0 1-2.5-2.5l8.5-8.5" />
       </svg>
@@ -18,6 +24,10 @@
       :disabled="disabled"
       @keydown.enter.exact.prevent="submit"
     />
+    <div v-if="uploadProgress !== null" class="upload-progress-bar">
+      <div class="upload-progress-fill" :style="{ width: uploadPercent + '%' }"></div>
+      <span class="upload-progress-text">{{ uploadFileName }} ({{ uploadPercent }}%)</span>
+    </div>
     <button class="composer-tool optional" type="button" aria-label="Add emoji">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="12" r="10" />
@@ -38,17 +48,40 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 
-defineProps<{
+const props = defineProps<{
   disabled?: boolean;
+  uploading?: boolean;
+  uploadFileName?: string;
+  uploadProgress?: number | null;
 }>();
 
 const emit = defineEmits<{
   (event: "send", content: string): void;
+  (event: "fileSelected", file: File): void;
 }>();
 
 const content = ref("");
+const fileInputRef = ref<HTMLInputElement | null>(null);
+
+const uploadPercent = computed(() => {
+  if (props.uploadProgress === null || props.uploadProgress === undefined) return 0;
+  return Math.min(100, Math.round(props.uploadProgress));
+});
+
+function triggerFilePicker() {
+  fileInputRef.value?.click();
+}
+
+function onFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  emit("fileSelected", file);
+  input.value = "";
+}
 
 function submit() {
   const trimmedContent = content.value.trim();

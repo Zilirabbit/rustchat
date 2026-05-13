@@ -206,5 +206,9 @@ fn map_history_message(row: PgRow) -> AppResult<HistoryMessage> {
         message_type: row.try_get("message_type")?,
         content: row.try_get("content")?,
         created_at: row.try_get("created_at")?,
+        file_id: None,
+        file_name: None,
+        file_size: None,
+        file_type: None,
     })
 }

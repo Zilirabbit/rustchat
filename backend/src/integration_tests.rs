@@ -424,6 +424,7 @@ async fn real_database_state() -> AppState {
             expires_in_secs: 3_600,
             issuer: "rustchat-integration-test".to_string(),
         },
+        upload_dir: "./uploads_test".to_string(),
     })
     .await
     .expect("app state should build with the real test database")

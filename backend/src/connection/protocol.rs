@@ -112,8 +112,13 @@ mod tests {
                 session_id: 12,
                 sender_id: 7,
                 sender_username: "alice".to_string(),
+                message_type: "text".to_string(),
                 content: "hello".to_string(),
                 created_at: "2026-05-03 12:00:00+00".to_string(),
+                file_id: None,
+                file_name: None,
+                file_size: None,
+                file_type: None,
             },
         })
         .unwrap();
@@ -131,8 +136,13 @@ mod tests {
                 session_id: 12,
                 sender_id: 7,
                 sender_username: "alice".to_string(),
+                message_type: "text".to_string(),
                 content: "hello".to_string(),
                 created_at: "2026-05-03 12:00:00+00".to_string(),
+                file_id: None,
+                file_name: None,
+                file_size: None,
+                file_type: None,
             },
             client_message_id: Some("local-1".to_string()),
         })
@@ -141,5 +151,32 @@ mod tests {
         let text = message.into_text().unwrap();
         assert!(text.contains(r#""type":"message_sent""#));
         assert!(text.contains(r#""client_message_id":"local-1""#));
+    }
+
+    #[test]
+    fn file_message_event_includes_file_fields() {
+        let message = server_event_message(&ServerEvent::ReceiveMessage {
+            message: ChatMessagePayload {
+                message_id: 10,
+                session_id: 12,
+                sender_id: 7,
+                sender_username: "alice".to_string(),
+                message_type: "file".to_string(),
+                content: "report.pdf".to_string(),
+                created_at: "2026-05-13 12:00:00+00".to_string(),
+                file_id: Some(5),
+                file_name: Some("report.pdf".to_string()),
+                file_size: Some(2048000),
+                file_type: Some("application/pdf".to_string()),
+            },
+        })
+        .unwrap();
+
+        let text = message.into_text().unwrap();
+        assert!(text.contains(r#""type":"receive_message""#));
+        assert!(text.contains(r#""message_type":"file""#));
+        assert!(text.contains(r#""file_id":5"#));
+        assert!(text.contains(r#""file_name":"report.pdf""#));
+        assert!(text.contains(r#""file_size":2048000"#));
     }
 }

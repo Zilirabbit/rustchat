@@ -14,7 +14,7 @@ use crate::{
         error::AppError,
         response::{ApiResponse, ok},
     },
-    connection, conversation, message,
+    connection, conversation, file, message,
     middleware::logging,
     session, user,
 };
@@ -28,6 +28,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(message::routes::router(state.clone()))
         .merge(session::routes::router(state.clone()))
         .merge(user::routes::router(state.clone()))
+        .merge(file::routes::router(state.clone()))
         .layer(middleware::from_fn(logging::log_request))
         .layer(cors_layer())
         .with_state(state)

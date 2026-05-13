@@ -23,7 +23,33 @@
             <span class="message-author">{{ message.sender_username }}</span>
             <time>{{ formatTime(message.created_at) }}</time>
           </div>
-          <p>{{ message.content }}</p>
+          <div v-if="message.message_type === 'file' && message.file_id" class="file-attachment">
+            <div class="file-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+            </div>
+            <div class="file-info">
+              <span class="file-name">{{ message.file_name || message.content }}</span>
+              <span class="file-size">{{ formatFileSize(message.file_size || 0) }}</span>
+            </div>
+            <button
+              class="file-download-btn"
+              type="button"
+              :title="'Download ' + (message.file_name || message.content)"
+              @click="downloadFile(message.file_id, message.file_name || message.content)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </button>
+          </div>
+          <p v-else>{{ message.content }}</p>
           <div
             v-if="message.sender_id === currentUserId && message.send_status"
             class="message-send-state"
@@ -46,6 +72,8 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 import type { MessageListItem } from "../types/chat";
+import { formatFileSize } from "../api/files";
+import { http } from "../api/http";
 
 const props = defineProps<{
   messages: MessageListItem[];
@@ -101,5 +129,26 @@ function sendStatusLabel(message: MessageListItem) {
   }
 
   return "已发送";
+}
+
+async function downloadFile(fileId: number | null | undefined, fileName: string) {
+  if (!fileId) return;
+
+  try {
+    const response = await http.get(`/api/files/${fileId}/download`, {
+      responseType: "blob",
+    });
+
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("Download failed:", error);
+  }
 }
 </script>
