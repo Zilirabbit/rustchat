@@ -83,6 +83,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: "retry", clientMessageId: string): void;
+  (event: "downloadError", message: string): void;
 }>();
 
 const listEl = ref<HTMLElement | null>(null);
@@ -148,7 +149,7 @@ async function downloadFile(fileId: number | null | undefined, fileName: string)
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   } catch (error) {
-    console.error("Download failed:", error);
+    emit("downloadError", "文件下载失败，请稍后重试");
   }
 }
 </script>

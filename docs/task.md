@@ -425,14 +425,37 @@
 
 ## 5. Phase 3：完善体验
 
-## 5.1 图片消息（可选）
+## 5.1 文件上传与图片消息（可选）
 
 ### 任务
 
-- [ ] 文件上传接口
-- [ ] 本地存储或静态资源访问
+- [x] 文件上传接口
+- [x] 本地存储与鉴权下载接口
+- [x] 文件消息结构定义
+- [x] 文件消息展示与下载
+- [x] 文件上传安全校验、事务写入与临时文件清理
+- [x] 文件上传前端进度、失败提示与上传后会话刷新
+- [x] 文件上传服务层测试与真实数据库集成测试入口
+- [ ] 补齐非安全上下文下的 SHA256 fallback，避免 VM IP HTTP 访问时报 `crypto.subtle.digest` 不可用
+- [ ] 文件上传 hash 计算失败时展示业务提示，不暴露原始 `digest` JS 异常
 - [ ] 图片消息结构定义
 - [ ] 图片消息展示
+- [ ] 图片内联预览
+- [ ] 对象存储 / S3 适配
+
+### 完成标准
+
+- 用户可在私聊或群聊中上传 100MB 以内的通用文件
+- 上传完成后会生成 `file` 类型消息，并在历史消息和会话列表中展示文件名
+- 会话成员可下载文件，非成员不可下载
+- 上传过程校验文件大小、文件名、MIME 类型、chunk 顺序和 SHA256
+- 数据库写入与消息创建保持事务一致，失败时清理已落盘文件
+- 后台清理可处理过期文件记录和残留临时上传目录
+
+### 已知问题
+
+- 宿主机通过 `http://192.168.221.131:5173` 访问前端时，部分浏览器不会提供 `crypto.subtle`，文件上传可能在前端 SHA256 计算阶段报 `Cannot read properties of undefined (reading 'digest')`。
+- 问题记录见 `docs/problems/file_upload_crypto_subtle_digest_issue.md`。
 
 ---
 
@@ -711,6 +734,8 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] 私聊重复创建幂等测试
 - [x] 会话列表接口测试
 - [x] 历史消息接口测试
+- [x] 文件上传服务层测试
+- [x] 文件上传真实数据库集成测试入口（默认 ignored，需 `TEST_DATABASE_URL`）
 
 ## 6.2 WebSocket 测试
 
@@ -726,6 +751,7 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] 基于真实数据库的“注册 -> 登录 -> /me”完整链路验证
 - [x] 从登录到聊天完整链路验证
 - [x] 真实数据库私聊并发创建唯一性验证
+- [x] 文件上传 HTTP 链路集成验证入口（init -> chunk -> complete -> history -> download）
 - [ ] 刷新页面后历史消息验证
 
 ---

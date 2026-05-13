@@ -7,6 +7,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt, future::join_all};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 use tower::util::ServiceExt;
@@ -405,6 +406,123 @@ async fn real_database_group_chat_flow_works_end_to_end() {
     );
 }
 
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL to point at the rustchat_test database"]
+async fn real_database_file_upload_flow_works_end_to_end() {
+    dotenvy::from_filename(".env.test").ok();
+
+    let state = real_database_state().await;
+    reset_test_data(&state).await;
+    let app = create_router(state.clone());
+
+    let suffix = unique_suffix();
+    let alice_username = format!("alice_file_it_{suffix}");
+    let bob_username = format!("bob_file_it_{suffix}");
+    let carol_username = format!("carol_file_it_{suffix}");
+    let password = "secret123";
+
+    let alice = register_user(app.clone(), &alice_username, password).await;
+    let bob = register_user(app.clone(), &bob_username, password).await;
+    register_user(app.clone(), &carol_username, password).await;
+
+    let alice_token = login_user(app.clone(), &alice_username, password).await;
+    let bob_token = login_user(app.clone(), &bob_username, password).await;
+    let carol_token = login_user(app.clone(), &carol_username, password).await;
+
+    let private_session = post_json(
+        app.clone(),
+        "/api/sessions/private",
+        Some(&alice_token),
+        json!({ "target_user_id": bob["data"]["user_id"] }),
+    )
+    .await;
+    let session_id = private_session["data"]["session_id"]
+        .as_i64()
+        .expect("session id should be returned");
+
+    let bytes = b"hello file upload";
+    let init = post_json(
+        app.clone(),
+        "/api/files/init",
+        Some(&alice_token),
+        json!({
+            "session_id": session_id,
+            "file_name": "hello.txt",
+            "file_size": bytes.len(),
+            "file_type": "text/plain",
+            "total_chunks": 1
+        }),
+    )
+    .await;
+    assert_eq!(init["message"], "upload initialized");
+    let upload_id = init["data"]["upload_id"]
+        .as_str()
+        .expect("upload id should be returned");
+
+    let chunk = post_bytes(
+        app.clone(),
+        &format!("/api/files/{upload_id}/chunk?index=0"),
+        Some(&alice_token),
+        bytes,
+    )
+    .await;
+    assert_eq!(chunk["message"], "chunk received");
+
+    let complete = post_json(
+        app.clone(),
+        &format!("/api/files/{upload_id}/complete"),
+        Some(&alice_token),
+        json!({ "file_hash": sha256_hex(bytes) }),
+    )
+    .await;
+    assert_eq!(complete["message"], "file uploaded successfully");
+    let file_id = complete["data"]["file_id"]
+        .as_i64()
+        .expect("file id should be returned");
+    assert_eq!(complete["data"]["file_name"], "hello.txt");
+    assert_eq!(complete["data"]["file_size"], bytes.len() as i64);
+
+    let bob_history = get_json(
+        app.clone(),
+        &format!("/api/messages?session_id={session_id}&limit=20"),
+        Some(&bob_token),
+    )
+    .await;
+    let file_message = &bob_history["data"]["messages"][0];
+    assert_eq!(file_message["message_type"], "file");
+    assert_eq!(file_message["content"], "hello.txt");
+    assert_eq!(file_message["file_id"], file_id);
+    assert_eq!(file_message["file_name"], "hello.txt");
+    assert_eq!(file_message["sender_id"], alice["data"]["user_id"]);
+
+    let bob_conversations = get_json(app.clone(), "/api/conversations", Some(&bob_token)).await;
+    let conversation = bob_conversations["data"]
+        .as_array()
+        .expect("conversations data should be an array")
+        .iter()
+        .find(|item| item["session_id"].as_i64() == Some(session_id))
+        .expect("bob should see the file conversation");
+    assert_eq!(conversation["last_message"], "hello.txt");
+
+    let downloaded = get_bytes(
+        app.clone(),
+        &format!("/api/files/{file_id}/download"),
+        Some(&bob_token),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(downloaded, bytes);
+
+    let forbidden = get_bytes(
+        app,
+        &format!("/api/files/{file_id}/download"),
+        Some(&carol_token),
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+    assert!(!forbidden.is_empty());
+}
+
 async fn real_database_state() -> AppState {
     let url = std::env::var("TEST_DATABASE_URL")
         .expect("TEST_DATABASE_URL must be set for real database integration tests");
@@ -440,6 +558,7 @@ async fn reset_test_data(state: &AppState) {
         r#"
         TRUNCATE TABLE
             user_session_read_state,
+            files,
             messages,
             private_session_pairs,
             session_members,
@@ -451,6 +570,14 @@ async fn reset_test_data(state: &AppState) {
     .execute(storage.pool())
     .await
     .expect("test database should be reset");
+
+    if let Some(file_service) = state.file_service.as_ref() {
+        let _ = tokio::fs::remove_dir_all(file_service.upload_dir()).await;
+        file_service
+            .prepare_storage_dirs()
+            .await
+            .expect("upload test dirs should be prepared");
+    }
 }
 
 async fn spawn_server(state: AppState) -> (std::net::SocketAddr, JoinHandle<()>) {
@@ -506,6 +633,18 @@ async fn post_json(app: Router, uri: &str, token: Option<&str>, payload: Value) 
     request_json(app, builder.body(Body::from(payload.to_string())).unwrap()).await
 }
 
+async fn post_bytes(app: Router, uri: &str, token: Option<&str>, payload: &[u8]) -> Value {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/octet-stream");
+    if let Some(token) = token {
+        builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+
+    request_json(app, builder.body(Body::from(payload.to_vec())).unwrap()).await
+}
+
 async fn get_json(app: Router, uri: &str, token: Option<&str>) -> Value {
     let mut builder = Request::builder().method("GET").uri(uri);
     if let Some(token) = token {
@@ -513,6 +652,29 @@ async fn get_json(app: Router, uri: &str, token: Option<&str>) -> Value {
     }
 
     request_json(app, builder.body(Body::empty()).unwrap()).await
+}
+
+async fn get_bytes(
+    app: Router,
+    uri: &str,
+    token: Option<&str>,
+    expected_status: StatusCode,
+) -> Vec<u8> {
+    let mut builder = Request::builder().method("GET").uri(uri);
+    if let Some(token) = token {
+        builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+
+    let response = app
+        .oneshot(builder.body(Body::empty()).unwrap())
+        .await
+        .expect("request should complete");
+    assert_eq!(response.status(), expected_status);
+
+    to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("response body should be readable")
+        .to_vec()
 }
 
 async fn delete_json(app: Router, uri: &str, token: Option<&str>) -> Value {
@@ -563,4 +725,10 @@ fn unique_suffix() -> u128 {
         .expect("system time should be after unix epoch")
         .as_millis()
         % 1_000_000_000_000
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
 }

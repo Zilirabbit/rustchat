@@ -57,10 +57,7 @@ impl AppState {
                     let context = storage.repository_context();
                     let file_repo = PostgresFileRepository::new(context.clone());
                     let fs = FileService::new(file_repo, upload_dir);
-
-                    // Ensure upload directories exist
-                    let _ = tokio::fs::create_dir_all(fs.upload_dir().join("tmp")).await;
-                    let _ = tokio::fs::create_dir_all(fs.upload_dir().join("final")).await;
+                    fs.prepare_storage_dirs().await?;
 
                     (
                         Some(fs),

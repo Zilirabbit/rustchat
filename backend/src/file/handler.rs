@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::{StatusCode, header},
+    http::{HeaderValue, StatusCode, header},
     response::Response,
 };
 use serde::Deserialize;
@@ -15,16 +15,11 @@ use crate::{
     message::dto::ChatMessagePayload,
 };
 
-use super::model::{InitUploadRequest, InitUploadResponse};
+use super::dto::{CompleteUploadRequest, InitUploadRequest, InitUploadResponse};
 
 #[derive(Debug, Deserialize)]
 pub struct ChunkQuery {
     pub index: u32,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CompleteBody {
-    pub file_hash: String,
 }
 
 pub async fn init_upload(
@@ -53,7 +48,7 @@ pub async fn init_upload(
 
 pub async fn upload_chunk(
     State(state): State<AppState>,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     Path(upload_id): Path<String>,
     Query(query): Query<ChunkQuery>,
     body: axum::body::Bytes,
@@ -70,7 +65,7 @@ pub async fn upload_chunk(
     }
 
     file_service
-        .save_chunk(&upload_id, query.index, &body)
+        .save_chunk(current_user.user_id, &upload_id, query.index, &body)
         .await?;
 
     Ok(ok("chunk received", ()))
@@ -80,7 +75,7 @@ pub async fn complete_upload(
     State(state): State<AppState>,
     current_user: CurrentUser,
     Path(upload_id): Path<String>,
-    Json(body): Json<CompleteBody>,
+    Json(body): Json<CompleteUploadRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let file_service = state
         .file_service
@@ -183,16 +178,29 @@ pub async fn download_file(
         file.file_type.clone()
     };
 
+    let content_disposition = safe_content_disposition(&file.file_name)?;
+
     let response = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type)
-        .header(
-            header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", file.file_name),
-        )
+        .header(header::CONTENT_DISPOSITION, content_disposition)
         .header(header::CONTENT_LENGTH, data.len().to_string())
         .body(axum::body::Body::from(data))
         .map_err(|e| AppError::internal(anyhow::anyhow!("failed to build response: {}", e)))?;
 
     Ok(response)
+}
+
+fn safe_content_disposition(file_name: &str) -> Result<HeaderValue, AppError> {
+    let escaped = file_name
+        .chars()
+        .map(|ch| match ch {
+            '"' | '\\' | '\r' | '\n' => '_',
+            ch if ch.is_control() => '_',
+            ch => ch,
+        })
+        .collect::<String>();
+
+    HeaderValue::from_str(&format!("attachment; filename=\"{}\"", escaped))
+        .map_err(|e| AppError::internal(anyhow::anyhow!("invalid content disposition: {}", e)))
 }

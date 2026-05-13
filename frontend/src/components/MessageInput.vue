@@ -1,6 +1,12 @@
 <template>
   <form class="message-input composer" @submit.prevent="submit">
-    <button class="composer-tool" type="button" aria-label="Add attachment">
+    <button
+      class="composer-tool"
+      type="button"
+      aria-label="Add attachment"
+      :disabled="disabled || uploading"
+      @click="triggerFilePicker"
+    >
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 5v14M5 12h14" />
       </svg>
@@ -9,9 +15,16 @@
       ref="fileInputRef"
       type="file"
       class="file-input-hidden"
+      :disabled="disabled || uploading"
       @change="onFileSelected"
     />
-    <button class="composer-tool" type="button" aria-label="Attach file" @click="triggerFilePicker">
+    <button
+      class="composer-tool"
+      type="button"
+      aria-label="Attach file"
+      :disabled="disabled || uploading"
+      @click="triggerFilePicker"
+    >
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="m21.4 11.6-8.5 8.5a5 5 0 0 1-7.1-7.1l9.2-9.2a3.4 3.4 0 0 1 4.8 4.8l-9.2 9.2a1.8 1.8 0 0 1-2.5-2.5l8.5-8.5" />
       </svg>
@@ -71,6 +84,10 @@ const uploadPercent = computed(() => {
 });
 
 function triggerFilePicker() {
+  if (props.disabled || props.uploading) {
+    return;
+  }
+
   fileInputRef.value?.click();
 }
 

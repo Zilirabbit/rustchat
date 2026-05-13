@@ -14,20 +14,6 @@ pub struct FileRecord {
     pub expires_at: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct InitUploadRequest {
-    pub session_id: i64,
-    pub file_name: String,
-    pub file_size: i64,
-    pub file_type: String,
-    pub total_chunks: u32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct InitUploadResponse {
-    pub upload_id: String,
-}
-
 /// In-memory state tracking a pending chunked upload
 #[derive(Clone)]
 pub struct PendingUpload {
@@ -38,5 +24,6 @@ pub struct PendingUpload {
     pub file_type: String,
     pub total_chunks: u32,
     pub received_chunks: Vec<bool>,
+    pub received_bytes: i64,
     pub created_at: std::time::Instant,
 }

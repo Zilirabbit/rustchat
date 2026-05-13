@@ -180,6 +180,7 @@
           :current-user-id="authStore.user?.user_id || 0"
           :loading="chatStore.loadingMessages"
           @retry="retryMessage"
+          @download-error="showFileDownloadError"
         />
         <div v-else class="empty-chat">
           <h1>No room selected</h1>
@@ -500,8 +501,18 @@ async function onFileSelected(file: File) {
   const sessionId = chatStore.activeSessionId;
   if (!sessionId) return;
 
+  if (uploadProgress.value !== null) {
+    chatStore.error = "当前文件仍在上传，请完成后再选择新文件";
+    return;
+  }
+
   if (!connectionStore.connected) {
     chatStore.error = "文件上传需要实时连接，请重连后再试";
+    return;
+  }
+
+  if (file.size === 0) {
+    chatStore.error = "不能上传空文件";
     return;
   }
 
@@ -517,6 +528,15 @@ async function onFileSelected(file: File) {
     await uploadFile(sessionId, file, (current, total) => {
       uploadProgress.value = Math.round((current / total) * 100);
     });
+    if (chatStore.activeSessionId === sessionId) {
+      await Promise.all([
+        chatStore.loadMessages(sessionId),
+        chatStore.loadConversations(),
+      ]);
+      await chatStore.markRead(sessionId);
+    } else {
+      await chatStore.loadConversations();
+    }
   } catch (error) {
     chatStore.error = getApiErrorMessage(error);
   } finally {
@@ -540,6 +560,10 @@ function sendMessage(content: string) {
 
 function retryMessage(clientMessageId: string) {
   connectionStore.retryMessage(clientMessageId);
+}
+
+function showFileDownloadError(message: string) {
+  chatStore.error = message;
 }
 
 function clearErrors() {

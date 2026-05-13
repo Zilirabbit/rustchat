@@ -96,3 +96,8 @@ v0.2.0-phase1-common.md
 覆盖提交：`c662f65`
 
 - [v0.1.0 - phase6 - 前端真实数据最小展示、CSS 重构与设计资产入库](./frontend/v0.1.0-phase6-real-data-ui-and-design-assets.md)
+
+### Phase 5.6 - 文件上传稳定 v1
+
+- [v0.1.1 - phase5.6 - 文件上传稳定 v1](./integration/v0.1.1-phase5.6-file-upload-stable-v1.md)
+- 已知问题：[文件上传 Web Crypto digest 不可用](../problems/file_upload_crypto_subtle_digest_issue.md)

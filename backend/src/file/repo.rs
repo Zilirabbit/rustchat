@@ -8,7 +8,7 @@ use super::model::FileRecord;
 
 #[async_trait]
 pub trait FileRepository: Send + Sync {
-    async fn create_file(
+    async fn create_file_upload_message(
         &self,
         session_id: i64,
         sender_id: i64,
@@ -17,7 +17,7 @@ pub trait FileRepository: Send + Sync {
         file_type: &str,
         file_hash: &str,
         storage_path: &str,
-    ) -> AppResult<FileRecord>;
+    ) -> AppResult<(FileRecord, i64, String)>;
     async fn get_file(&self, file_id: i64) -> AppResult<Option<FileRecord>>;
     async fn list_expired_files(&self) -> AppResult<Vec<FileRecord>>;
     async fn delete_file_record(&self, file_id: i64) -> AppResult<()>;
@@ -27,13 +27,6 @@ pub trait FileRepository: Send + Sync {
         exclude_user_id: i64,
     ) -> AppResult<Vec<i64>>;
     async fn is_session_member(&self, session_id: i64, user_id: i64) -> AppResult<bool>;
-    async fn create_file_message(
-        &self,
-        session_id: i64,
-        sender_id: i64,
-        content: &str,
-    ) -> AppResult<i64>;
-    async fn update_session_last_message(&self, session_id: i64, message_id: i64) -> AppResult<()>;
 }
 
 #[derive(Clone)]
@@ -55,7 +48,7 @@ impl Repository for PostgresFileRepository {
 
 #[async_trait]
 impl FileRepository for PostgresFileRepository {
-    async fn create_file(
+    async fn create_file_upload_message(
         &self,
         session_id: i64,
         sender_id: i64,
@@ -64,7 +57,9 @@ impl FileRepository for PostgresFileRepository {
         file_type: &str,
         file_hash: &str,
         storage_path: &str,
-    ) -> AppResult<FileRecord> {
+    ) -> AppResult<(FileRecord, i64, String)> {
+        let mut tx = self.pool().begin().await?;
+
         let row = sqlx::query(
             r#"
             INSERT INTO files (session_id, sender_id, file_name, file_size, file_type, file_hash, storage_path)
@@ -89,10 +84,48 @@ impl FileRepository for PostgresFileRepository {
         .bind(file_type)
         .bind(file_hash)
         .bind(storage_path)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
 
-        Ok(map_file_record(row))
+        let file_record = map_file_record(row);
+        let file_content = serde_json::json!({
+            "file_id": file_record.file_id,
+            "file_name": file_record.file_name,
+            "file_size": file_record.file_size,
+            "file_type": file_record.file_type,
+        })
+        .to_string();
+
+        let row = sqlx::query(
+            r#"
+            INSERT INTO messages (session_id, sender_id, message_type, content)
+            VALUES ($1, $2, 'file', $3)
+            RETURNING id
+            "#,
+        )
+        .bind(session_id)
+        .bind(sender_id)
+        .bind(&file_content)
+        .fetch_one(&mut *tx)
+        .await?;
+        let message_id: i64 = row.get("id");
+
+        sqlx::query(
+            r#"
+            UPDATE sessions
+            SET last_message_id = $2,
+                last_message_at = (SELECT created_at FROM messages WHERE session_id = $1 AND id = $2)
+            WHERE id = $1
+            "#,
+        )
+        .bind(session_id)
+        .bind(message_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok((file_record, message_id, file_content))
     }
 
     async fn get_file(&self, file_id: i64) -> AppResult<Option<FileRecord>> {
@@ -110,7 +143,7 @@ impl FileRepository for PostgresFileRepository {
                 created_at::text AS created_at,
                 expires_at::text AS expires_at
             FROM files
-            WHERE id = $1
+            WHERE id = $1 AND expires_at >= NOW()
             "#,
         )
         .bind(file_id)
@@ -188,45 +221,6 @@ impl FileRepository for PostgresFileRepository {
         .await?;
 
         Ok(row.is_some())
-    }
-
-    async fn create_file_message(
-        &self,
-        session_id: i64,
-        sender_id: i64,
-        content: &str,
-    ) -> AppResult<i64> {
-        let row = sqlx::query(
-            r#"
-            INSERT INTO messages (session_id, sender_id, message_type, content)
-            VALUES ($1, $2, 'file', $3)
-            RETURNING id
-            "#,
-        )
-        .bind(session_id)
-        .bind(sender_id)
-        .bind(content)
-        .fetch_one(self.pool())
-        .await?;
-
-        Ok(row.get("id"))
-    }
-
-    async fn update_session_last_message(&self, session_id: i64, message_id: i64) -> AppResult<()> {
-        sqlx::query(
-            r#"
-            UPDATE sessions
-            SET last_message_id = $2,
-                last_message_at = (SELECT created_at FROM messages WHERE session_id = $1 AND id = $2)
-            WHERE id = $1
-            "#,
-        )
-        .bind(session_id)
-        .bind(message_id)
-        .execute(self.pool())
-        .await?;
-
-        Ok(())
     }
 }
 

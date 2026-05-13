@@ -792,7 +792,158 @@ curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_i
 - `403`：当前用户不是该会话成员
 - `503`：数据库未配置
 
-### 4.14 WebSocket 连接
+### 4.14 文件上传与下载
+
+文件上传使用三步 HTTP 流程：初始化上传、上传分片、完成上传。完成上传后服务端会创建一条 `message_type = "file"` 的消息，并通过 WebSocket 向会话成员推送。
+
+通用约束：
+
+- 鉴权：所有文件接口都需要 `Authorization: Bearer <token>`
+- 当前用户必须是目标 session 成员
+- 文件大小范围：`1..=100MB`
+- `file_name` 最长 256 字符
+- `file_type` 最长 128 字符，空值应由客户端传 `application/octet-stream`
+- `file_hash` 必须是 64 位 SHA256 hex
+- 上传状态只保存在当前后端进程内，v1 不支持断点续传或跨进程恢复
+
+#### 4.14.1 初始化上传
+
+- 方法：`POST`
+- 路径：`/api/files/init`
+- 鉴权：是
+
+请求体：
+
+```json
+{
+  "session_id": 12,
+  "file_name": "hello.txt",
+  "file_size": 17,
+  "file_type": "text/plain",
+  "total_chunks": 1
+}
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "upload initialized",
+  "data": {
+    "upload_id": "550e8400-e29b-41d4-a716-446655440000"
+  }
+}
+```
+
+可能错误：
+
+- `400`：文件名为空、文件大小非法、chunk 数非法、字段超长
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是该 session 成员
+- `503`：数据库未配置
+
+#### 4.14.2 上传分片
+
+- 方法：`POST`
+- 路径：`/api/files/{upload_id}/chunk?index=<chunk_index>`
+- 鉴权：是
+- 请求体：二进制 chunk
+- 请求头：`Content-Type: application/octet-stream`
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "chunk received",
+  "data": null
+}
+```
+
+说明：
+
+- `index` 从 `0` 开始
+- 同一个 chunk index 重复上传会被拒绝
+- 上传用户必须是初始化该 `upload_id` 的用户
+- 已接收字节数不能超过初始化时声明的 `file_size`
+
+可能错误：
+
+- `400`：chunk 为空、index 越界、重复上传、upload_id 过期或不存在
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是该上传的发起人
+
+#### 4.14.3 完成上传
+
+- 方法：`POST`
+- 路径：`/api/files/{upload_id}/complete`
+- 鉴权：是
+
+请求体：
+
+```json
+{
+  "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "file uploaded successfully",
+  "data": {
+    "file_id": 5,
+    "message_id": 21,
+    "file_name": "hello.txt",
+    "file_size": 17,
+    "file_type": "text/plain"
+  }
+}
+```
+
+完成上传时服务端会：
+
+- 校验所有 chunk 已收到
+- 合并文件并校验实际大小等于声明大小
+- 校验 SHA256 与 `file_hash` 一致
+- 将文件移动到 `UPLOAD_DIR/final`
+- 在一个数据库事务内写入 `files`、`messages` 并更新会话最近消息
+- 向发送方发送 `message_sent`，向其他在线成员发送 `receive_message`
+
+可能错误：
+
+- `400`：hash 格式非法、缺少 chunk、大小不一致、hash 不匹配、upload_id 过期或不存在
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是该上传的发起人
+
+#### 4.14.4 下载文件
+
+- 方法：`GET`
+- 路径：`/api/files/{file_id}/download`
+- 鉴权：是
+
+成功响应：
+
+```text
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Content-Disposition: attachment; filename="hello.txt"
+Content-Length: 17
+
+<binary body>
+```
+
+可能错误：
+
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是文件所属 session 成员
+- `404`：文件不存在、已过期，或磁盘文件缺失
+- `503`：数据库未配置
+
+### 4.15 WebSocket 连接
 
 - 方法：`GET`
 - 路径：`/ws`
@@ -925,10 +1076,14 @@ Authorization: Bearer <jwt-token>
 13. `GET /api/conversations`
 14. `GET /api/messages?session_id=<id>&limit=20`
 15. `POST /api/sessions/<id>/read`
-16. `DELETE /api/sessions/<group_id>/members/me`
-17. 再次 `GET /api/conversations` 验证 `unread_count`
-18. 删除 `Authorization` 再测一次 `/api/me`
-19. 将 token 改成非法值再测一次 `/api/me`
+16. `POST /api/files/init`
+17. `POST /api/files/<upload_id>/chunk?index=0`
+18. `POST /api/files/<upload_id>/complete`
+19. `GET /api/files/<file_id>/download`
+20. `DELETE /api/sessions/<group_id>/members/me`
+21. 再次 `GET /api/conversations` 验证 `unread_count`
+22. 删除 `Authorization` 再测一次 `/api/me`
+23. 将 token 改成非法值再测一次 `/api/me`
 
 ## 6. 维护约定
 
