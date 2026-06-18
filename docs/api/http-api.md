@@ -25,19 +25,19 @@
 
 ## 2. Postman 导入
 
-`api.md` 不能直接导入 Postman。
+`http-api.md` 不能直接导入 Postman。
 
 如需导入 Postman，请使用：
 
-- `docs/postman/rustchat.postman_collection.json`
-- `docs/postman/rustchat.websocket.postman_collection.json`
+- `docs/api/postman/rustchat.postman_collection.json`
+- `docs/api/postman/rustchat.websocket.postman_collection.json`
 
 导入方式：
 
 1. 打开 Postman
 2. 点击 `Import`
-3. 先导入 `docs/postman/rustchat.postman_collection.json`
-4. 再导入 `docs/postman/rustchat.websocket.postman_collection.json`
+3. 先导入 `docs/api/postman/rustchat.postman_collection.json`
+4. 再导入 `docs/api/postman/rustchat.websocket.postman_collection.json`
 5. 导入后修改 collection 变量：
    - HTTP collection：`base_url`
    - WebSocket collection：`ws_base_url`
@@ -934,8 +934,8 @@ Authorization: Bearer <jwt-token>
 
 后续新增 API 时，建议同步维护两份文件：
 
-- 人读文档：`docs/api.md`
-- Postman 导入文件：`docs/postman/rustchat.postman_collection.json`
+- 人读文档：`docs/api/http-api.md`
+- Postman 导入文件：`docs/api/postman/rustchat.postman_collection.json`
 
 每次新增接口至少同步以下信息：
 

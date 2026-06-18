@@ -410,7 +410,7 @@ Ubuntu VM（运行）
 
 ### 1. 不采用 TUN 的手动配置
 
-![Clash UI](./img/clash.png)
+![Clash UI](../img/clash.png)
 
 找到 Port ，把更新关掉。
 打开 Allow LAN ，点击三角图标，记住 WLAN 的 ip 地址。后面用 NAT 共享这个 ip 进行转发。

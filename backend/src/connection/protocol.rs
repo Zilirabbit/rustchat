@@ -31,6 +31,9 @@ pub enum ServerEvent {
     ReceiveMessage {
         message: ChatMessagePayload,
     },
+    ConversationUpdated {
+        session_id: i64,
+    },
     Error {
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,6 +129,16 @@ mod tests {
         let text = message.into_text().unwrap();
         assert!(text.contains(r#""type":"receive_message""#));
         assert!(text.contains(r#""message_id":3"#));
+    }
+
+    #[test]
+    fn conversation_updated_event_uses_snake_case_protocol() {
+        let message =
+            server_event_message(&ServerEvent::ConversationUpdated { session_id: 22 }).unwrap();
+
+        let text = message.into_text().unwrap();
+        assert!(text.contains(r#""type":"conversation_updated""#));
+        assert!(text.contains(r#""session_id":22"#));
     }
 
     #[test]

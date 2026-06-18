@@ -2,10 +2,10 @@
 
 ## 1. 这份文件放在哪里
 
-建议将“文件目录结构相关说明”放在：
+“文件目录结构相关说明”放在：
 
 ```text
-/docs/project-structure.md
+/docs/architecture/project-structure.md
 ```
 
 原因：
@@ -14,13 +14,7 @@
 - 它会同时影响后端目录、文档目录、模块拆分方式、命名规范、后续扩展方式。
 - 这类内容适合作为团队或自己开发时的“统一参考约定”，应放在 `/docs` 根目录，而不是某个模块文档下。
 
-如果后续文档继续增多，也可以改成：
-
-```text
-/docs/architecture/project-structure.md
-```
-
-但对你当前项目阶段，直接放在 `/docs/project-structure.md` 最实用。
+它属于架构与工程约定文档，和数据库设计等项目结构说明统一放在 `docs/architecture/`。
 
 ---
 
@@ -45,20 +39,25 @@ rustchat/
 ├─ backend/
 ├─ frontend/
 ├─ docs/
-│  ├─ spec.md
-│  ├─ task.md
-│  ├─ project-structure.md
-│  ├─ modules/
-│  │  ├─ user.md
-│  │  ├─ session.md
-│  │  ├─ message.md
-│  │  ├─ connection.md
-│  │  └─ conversation.md
+│  ├─ README.md
+│  ├─ product/
+│  │  ├─ overview.md
+│  │  ├─ spec.md
+│  │  ├─ task.md
+│  │  ├─ requirements-analysis.md
+│  │  └─ frontend-ui-plan.md
+│  ├─ architecture/
+│  │  ├─ project-structure.md
+│  │  └─ db.md
+│  ├─ api/
+│  │  ├─ http-api.md
+│  │  └─ postman/
+│  ├─ setup/
+│  │  └─ env-setup-vm.md
+│  ├─ design/
+│  ├─ img/
+│  ├─ problems/
 │  └─ summary/
-│     ├─ README.md
-│     ├─ backend/
-│     ├─ frontend/
-│     └─ integration/
 └─ README.md
 ```
 
@@ -66,7 +65,7 @@ rustchat/
 
 ## 4. docs 目录说明
 
-### 4.1 `spec.md`
+### 4.1 `product/spec.md`
 
 用于描述：
 
@@ -78,7 +77,7 @@ rustchat/
 
 它回答的是：**项目要做什么，做到什么程度。**
 
-### 4.2 `task.md`
+### 4.2 `product/task.md`
 
 用于描述：
 
@@ -90,7 +89,7 @@ rustchat/
 
 它回答的是：**项目先做什么，后做什么，现在做到哪里。**
 
-### 4.3 `project-structure.md`
+### 4.3 `architecture/project-structure.md`
 
 用于描述：
 
@@ -101,17 +100,49 @@ rustchat/
 
 它回答的是：**代码和文档应该怎么放。**
 
-### 4.4 `modules/*.md`
+### 4.4 `product/requirements-analysis.md`
 
-每个模块单独一个轻量文档，用于限制上下文。
+用于从需求分析角度整理：
 
-例如：
+- 当前功能范围
+- 用户场景
+- 业务规则
+- 范围边界
+- 验收标准
 
-- `modules/user.md`
-- `modules/message.md`
-- `modules/session.md`
+它回答的是：**为什么做、做给谁、做到什么程度算满足需求。**
 
-这些文档只写该模块开发真正需要的信息，例如：
+### 4.5 `api/`
+
+用于放接口文档与 Postman collection：
+
+- `api/http-api.md`
+- `api/postman/`
+
+它回答的是：**接口怎么调用、怎么联调。**
+
+### 4.6 `summary/`
+
+用于按阶段记录：
+
+- 已完成内容
+- 关键实现说明
+- 验证结果
+- 当前产物
+
+它回答的是：**每个阶段具体完成了什么。**
+
+### 4.7 可选的模块文档
+
+当前项目先不新增模块文档目录，优先通过产品、架构、API 和 summary 文档定位上下文。
+
+如果后续单个业务模块继续变复杂，可以再新增轻量模块文档，例如：
+
+- `docs/product/modules/user.md`
+- `docs/product/modules/message.md`
+- `docs/product/modules/session.md`
+
+这些文档只写该模块开发真正需要的信息：
 
 - 模块职责
 - 涉及接口
@@ -120,11 +151,11 @@ rustchat/
 - 业务规则
 - 当前任务
 
-这样每次开发一个功能时，只需读取：
+这样每次开发一个功能时，可以按需读取：
 
-- `spec.md`
-- `task.md`
-- 对应 `modules/*.md`
+- `docs/product/spec.md`
+- `docs/product/task.md`
+- 对应的 `docs/product/modules/*.md`
 
 即可控制上下文范围。
 
@@ -530,10 +561,10 @@ xxx/
 
 后续可以在需要时再新增：
 
-- `docs/db.md`：当数据库设计开始稳定
-- `docs/api.md`：当前后端接口开始联调
-- `docs/websocket.md`：当 WS 协议开始固定
-- `docs/architecture.md`：当项目结构复杂度上升
+- `docs/architecture/db.md`：当数据库设计开始稳定
+- `docs/api/http-api.md`：当前后端接口开始联调
+- `docs/api/websocket.md`：当 WS 协议需要从 HTTP API 文档中独立出来
+- `docs/architecture/*.md`：当项目结构复杂度继续上升
 
 原则：
 
@@ -547,10 +578,12 @@ xxx/
 
 现在先保留：
 
-- `docs/spec.md`
-- `docs/task.md`
-- `docs/project-structure.md`
-- `docs/modules/*.md`
+- `docs/product/spec.md`
+- `docs/product/task.md`
+- `docs/product/requirements-analysis.md`
+- `docs/architecture/project-structure.md`
+- `docs/architecture/db.md`
+- `docs/api/http-api.md`
 
 ### 后端层
 
@@ -567,20 +600,19 @@ xxx/
 #### 做用户登录
 读取：
 
-- `docs/spec.md`
-- `docs/task.md`
-- `docs/modules/user.md`
-- `docs/project-structure.md`
+- `docs/product/spec.md`
+- `docs/product/task.md`
+- `docs/product/requirements-analysis.md`
+- `docs/architecture/project-structure.md`
 
 #### 做私聊发消息
 读取：
 
-- `docs/spec.md`
-- `docs/task.md`
-- `docs/modules/session.md`
-- `docs/modules/message.md`
-- `docs/modules/connection.md`
-- `docs/project-structure.md`
+- `docs/product/spec.md`
+- `docs/product/task.md`
+- `docs/api/http-api.md`
+- `docs/architecture/db.md`
+- `docs/architecture/project-structure.md`
 
 这样既能限制上下文，又能保持目录和代码风格统一。
 
@@ -594,7 +626,7 @@ xxx/
 4. 请求/响应结构放 `dto.rs`，数据库实体放 `model.rs`。
 5. 不允许创建含义模糊的 `misc.rs`、`helper.rs`、`temp.rs`。
 6. 能归属于某个领域的逻辑，不要放进 `utils`。
-7. 模块文档用于控制上下文，总文档用于保证全局一致性。
+7. 产品、架构、API、阶段总结分目录维护，避免根文档目录继续堆平。
 
 ---
 
@@ -602,7 +634,7 @@ xxx/
 
 对于当前 RustChat 项目：
 
-- “文件目录结构相关说明”最适合单独放在 `/docs/project-structure.md`
+- “文件目录结构相关说明”最适合单独放在 `/docs/architecture/project-structure.md`
 - 它应作为项目级约定文档长期维护
 - 后端目录采用“按业务模块聚合”的方式，而不是全局按 DTO/MODEL/SERVICE 横切
 - 真正的统一性来自**约定统一**，不是把所有文件堆到同一个目录

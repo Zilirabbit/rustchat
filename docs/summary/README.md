@@ -72,7 +72,7 @@ v0.2.0-phase1-common.md
 覆盖提交：`90814bf`、`0496c3e`、`8383d7f`、`21fc585`、`3af1736`、`1ba7155`
 
 - `90814bf` 补充环境与项目概览细节。
-- `0496c3e` 实现前端聊天 UI，相关设计记录见 [frontend_ui_plan](../frontend_ui_plan.md)。
+- `0496c3e` 实现前端聊天 UI，相关设计记录见 [frontend-ui-plan](../product/frontend-ui-plan.md)。
 - `8383d7f` 记录大文件清理问题与处理方式。
 - `21fc585` 将 summary 记录按 `backend/`、`frontend/`、`integration/` 目录归档。
 - [v0.1.0 - Phase 4 - HTTP 接口联调](./integration/v0.1.0-phase4-http-api-integration.md)

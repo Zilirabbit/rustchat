@@ -104,6 +104,11 @@ export const useConnectionStore = defineStore("connection", {
             return;
           }
 
+          if (payload.type === "conversation_updated") {
+            void chatStore.handleConversationUpdated(payload.session_id);
+            return;
+          }
+
           if (payload.type === "error") {
             if (payload.client_message_id) {
               chatStore.markOutgoingMessageFailed(

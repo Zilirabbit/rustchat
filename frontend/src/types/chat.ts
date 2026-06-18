@@ -128,4 +128,5 @@ export type ServerEvent =
       client_message_id?: string;
     }
   | { type: "receive_message"; message: WsChatMessage }
+  | { type: "conversation_updated"; session_id: number }
   | { type: "error"; message: string; client_message_id?: string };
