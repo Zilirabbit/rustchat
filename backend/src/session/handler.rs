@@ -10,6 +10,7 @@ use crate::{
         error::AppError,
         response::{ApiResponse, ok},
     },
+    connection::protocol::ServerEvent,
 };
 
 use super::dto::{
@@ -41,6 +42,14 @@ pub async fn create_group_session(
         .create_group_session(&current_user, payload)
         .await?;
 
+    notify_group_members_conversation_updated(
+        &state,
+        &session.member_user_ids,
+        current_user.user_id,
+        session.session_id,
+    )
+    .await;
+
     Ok(ok("group session created", session))
 }
 
@@ -54,6 +63,10 @@ pub async fn add_group_member(
         .session_service
         .add_group_member(&current_user, session_id, payload)
         .await?;
+
+    if member.added {
+        notify_conversation_updated(&state, member.user_id, member.session_id).await;
+    }
 
     Ok(ok("group member ready", member))
 }
@@ -95,4 +108,31 @@ pub async fn mark_session_read(
         .await?;
 
     Ok(ok("session marked as read", read_state))
+}
+
+async fn notify_group_members_conversation_updated(
+    state: &AppState,
+    member_user_ids: &[i64],
+    actor_user_id: i64,
+    session_id: i64,
+) {
+    for member_user_id in member_user_ids {
+        if *member_user_id != actor_user_id {
+            notify_conversation_updated(state, *member_user_id, session_id).await;
+        }
+    }
+}
+
+async fn notify_conversation_updated(state: &AppState, user_id: i64, session_id: i64) {
+    if !state
+        .connections
+        .send_to_user(user_id, &ServerEvent::ConversationUpdated { session_id })
+        .await
+    {
+        tracing::debug!(
+            user_id,
+            session_id,
+            "conversation update websocket push skipped"
+        );
+    }
 }

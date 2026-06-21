@@ -391,7 +391,7 @@
 - [x] 已读后再次查询会话列表时，当前用户该会话的 `unread_count` 可正常归零
 - [x] 补充 route / service / repo 层测试
 - [x] 补充真实数据库集成测试
-- [x] 更新 `docs/api.md` 与 Postman collection
+- [x] 更新 `docs/api/http-api.md` 与 Postman collection
 
 ### 输出物
 
@@ -613,7 +613,7 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] 群聊消息复用现有 WebSocket `send_message` 协议
 - [x] 群聊实时消息复用现有消息列表与会话预览更新逻辑
 - [x] 页面刷新后复用现有 `activeSessionId` 恢复逻辑重新打开群聊
-- [x] 更新 `docs/api.md` 群聊前端联调说明
+- [x] 更新 `docs/api/http-api.md` 群聊前端联调说明
 
 ### 完成标准
 

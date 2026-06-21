@@ -328,6 +328,22 @@ export const useChatStore = defineStore("chat", {
       localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, String(sessionId));
       await Promise.all([this.loadMessages(sessionId), this.markRead(sessionId)]);
     },
+    async handleConversationUpdated(sessionId: number) {
+      delete this.ignoredSessionIds[sessionId];
+      await this.loadConversations();
+
+      if (this.activeSessionId !== sessionId) {
+        return;
+      }
+
+      const conversation = this.conversations.find(
+        (item) => item.session_id === sessionId,
+      );
+
+      if (conversation?.session_type === "group") {
+        await this.loadGroupMembers(sessionId);
+      }
+    },
     createOutgoingMessage(
       sessionId: number,
       content: string,

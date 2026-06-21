@@ -39,6 +39,7 @@ mod tests {
         http::{Request, StatusCode, header},
     };
     use serde_json::{Value, json};
+    use tokio::time::{Duration, timeout};
     use tower::util::ServiceExt;
 
     use crate::{
@@ -239,6 +240,8 @@ mod tests {
             Arc::new(StubSessionService),
             Arc::new(UnavailableMessageService),
         );
+        let invited_connection = state.connections.register(2).await;
+        let mut invited_receiver = invited_connection.into_receiver();
 
         let response = router(state.clone())
             .with_state(state)
@@ -264,6 +267,16 @@ mod tests {
         assert_eq!(body["data"]["session_id"], 22);
         assert_eq!(body["data"]["session_type"], "group");
         assert_eq!(body["data"]["name"], "team");
+
+        let pushed_payload = timeout(Duration::from_secs(1), invited_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap()
+            .into_text()
+            .unwrap();
+        let pushed_body: Value = serde_json::from_str(&pushed_payload).unwrap();
+        assert_eq!(pushed_body["type"], "conversation_updated");
+        assert_eq!(pushed_body["session_id"], 22);
     }
 
     #[tokio::test]
@@ -277,6 +290,8 @@ mod tests {
             Arc::new(StubSessionService),
             Arc::new(UnavailableMessageService),
         );
+        let invited_connection = state.connections.register(2).await;
+        let mut invited_receiver = invited_connection.into_receiver();
 
         let response = router(state.clone())
             .with_state(state)
@@ -300,6 +315,16 @@ mod tests {
         assert_eq!(body["data"]["session_id"], 22);
         assert_eq!(body["data"]["user_id"], 2);
         assert_eq!(body["data"]["added"], true);
+
+        let pushed_payload = timeout(Duration::from_secs(1), invited_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap()
+            .into_text()
+            .unwrap();
+        let pushed_body: Value = serde_json::from_str(&pushed_payload).unwrap();
+        assert_eq!(pushed_body["type"], "conversation_updated");
+        assert_eq!(pushed_body["session_id"], 22);
     }
 
     #[tokio::test]
