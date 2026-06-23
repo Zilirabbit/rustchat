@@ -57,6 +57,12 @@ export interface LeaveGroupSessionResponse {
   left: boolean;
 }
 
+export interface RemoveGroupMemberResponse {
+  session_id: number;
+  user_id: number;
+  removed: boolean;
+}
+
 export interface MarkSessionReadResponse {
   session_id: number;
   last_read_message_id: number | null;

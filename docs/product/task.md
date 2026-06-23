@@ -719,6 +719,55 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [ ] 空状态文案优化
 - [ ] 禁用态与重复点击防护
 
+### 5.5.6 GIF / 表情功能
+
+- [x] 将原 `Stickers` 与 `GIFs` 入口合并为单一 `GIF` 面板
+- [x] 输入框保留一个附件按钮，移除重复的加号/附件入口
+- [x] GIF 面板提供默认 GIF/表情资源
+- [x] 支持从本地上传图片/GIF 并发送
+- [x] 支持将消息中的图片/GIF 保存到本地表情库
+- [x] 保存后的表情可在 GIF 面板中复用
+- [x] 图片/GIF 消息在消息列表中以内联预览展示
+
+完成说明：
+
+- 默认 GIF 与默认静态表情由 `frontend/src/utils/stickers.ts` 管理。
+- 用户保存的表情存储在浏览器 `localStorage` 中，适合本地演示，不作为服务端跨设备同步能力。
+- 发送 GIF/表情复用现有文件上传链路，消息类型仍为 `message_type = "file"`。
+
+### 5.5.7 语音消息
+
+- [x] 输入框新增麦克风录音按钮
+- [x] 支持开始录音、停止录音、取消录音
+- [x] 录音中显示计时状态
+- [x] 录音结束后生成非空音频文件并复用文件上传链路发送
+- [x] 上传端在缺失 MIME 时按扩展名推断音频类型
+- [x] 消息列表支持 `audio/*` 与 `.webm/.m4a/.mp3/.wav/.ogg/.oga` 文件名兜底识别
+- [x] 语音消息以内联 `<audio controls>` 播放器展示
+- [x] 录音权限失败或浏览器不支持时显示错误提示
+
+完成说明：
+
+- 当前实现是“语音消息”，不是实时语音通话。
+- 录音依赖浏览器 `MediaRecorder` 与 `navigator.mediaDevices.getUserMedia`。
+- 语音文件以普通文件消息持久化，服务端无需新增数据库表。
+
+### 5.5.8 群主成员管理
+
+- [x] 后端新增 `DELETE /api/sessions/{session_id}/members/{user_id}`
+- [x] 仅群聊 `owner` 可移除普通成员
+- [x] 禁止通过移除成员接口移除群主
+- [x] 禁止 owner 通过移除成员接口移除自己，自己退出仍使用 `members/me`
+- [x] 移除成员后通知被移除用户和剩余在线群成员刷新会话状态
+- [x] 前端仅 owner 展示添加成员搜索入口
+- [x] 前端仅 owner 对普通成员展示 `Remove` 按钮
+- [x] 移除成功后刷新会话列表和成员列表
+
+完成说明：
+
+- 群主移除成员与普通成员主动退群是两个不同动作，分别由 `members/{user_id}` 与 `members/me` 表达。
+- 当前不支持多个 owner，也不支持 owner 转让功能；owner 退出时沿用已有“自动提升最早成员”的逻辑。
+
 ---
 
 ## 6. 测试与验收任务
@@ -736,6 +785,7 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] 历史消息接口测试
 - [x] 文件上传服务层测试
 - [x] 文件上传真实数据库集成测试入口（默认 ignored，需 `TEST_DATABASE_URL`）
+- [x] 群主移除成员 service 层测试
 
 ## 6.2 WebSocket 测试
 
@@ -752,16 +802,19 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 - [x] 从登录到聊天完整链路验证
 - [x] 真实数据库私聊并发创建唯一性验证
 - [x] 文件上传 HTTP 链路集成验证入口（init -> chunk -> complete -> history -> download）
+- [x] GIF/表情手动联调验证
+- [x] 语音录制、上传、历史播放器手动联调验证
+- [x] 群主成员管理手动联调验证
 - [ ] 刷新页面后历史消息验证
 
 ---
 
 ## 7. 文档任务
 
-- [ ] 更新 `spec.md`
-- [ ] 更新 `task.md`
+- [x] 更新 `spec.md`
+- [x] 更新 `task.md`
 - [ ] 编写 `summary.md`
-- [ ] 编写 `api.md`
+- [x] 编写 `api.md`
 - [ ] 编写 `db.md`
 - [ ] 编写 `README.md`
 
@@ -804,4 +857,5 @@ npm install -D vite typescript @vitejs/plugin-vue vue-tsc
 11. 前端环境搭建
 12. 前端私聊 UI 与联调
 13. 群聊与前端对齐
-14. 可选优化
+14. GIF/表情、语音消息、群主成员管理
+15. 可选优化

@@ -6,6 +6,7 @@ import type {
   LeaveGroupSessionResponse,
   ListGroupMembersResponse,
   MarkSessionReadResponse,
+  RemoveGroupMemberResponse,
 } from "../types/chat";
 import { http, unwrapResponse } from "./http";
 
@@ -49,6 +50,14 @@ export function leaveGroupSession(sessionId: number) {
   return http
     .delete<ApiResponse<LeaveGroupSessionResponse>>(
       `/api/sessions/${sessionId}/members/me`,
+    )
+    .then(unwrapResponse);
+}
+
+export function removeGroupMember(sessionId: number, userId: number) {
+  return http
+    .delete<ApiResponse<RemoveGroupMemberResponse>>(
+      `/api/sessions/${sessionId}/members/${userId}`,
     )
     .then(unwrapResponse);
 }

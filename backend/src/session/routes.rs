@@ -23,6 +23,10 @@ pub fn router(state: AppState) -> Router<AppState> {
             delete(handler::leave_group_session),
         )
         .route(
+            "/api/sessions/{session_id}/members/{user_id}",
+            delete(handler::remove_group_member),
+        )
+        .route(
             "/api/sessions/{session_id}/read",
             post(handler::mark_session_read),
         )
@@ -55,7 +59,7 @@ mod tests {
             AddGroupMemberRequest, AddGroupMemberResponse, CreateGroupSessionRequest,
             CreateGroupSessionResponse, CreatePrivateSessionRequest, CreatePrivateSessionResponse,
             GroupMemberListItem, LeaveGroupSessionResponse, ListGroupMembersResponse,
-            MarkSessionReadResponse,
+            MarkSessionReadResponse, RemoveGroupMemberResponse,
         },
         service::SessionUseCase,
     };
@@ -144,6 +148,19 @@ mod tests {
                 session_id,
                 user_id: current_user.user_id,
                 left: true,
+            })
+        }
+
+        async fn remove_group_member(
+            &self,
+            _current_user: &CurrentUser,
+            session_id: i64,
+            user_id: i64,
+        ) -> AppResult<RemoveGroupMemberResponse> {
+            Ok(RemoveGroupMemberResponse {
+                session_id,
+                user_id,
+                removed: true,
             })
         }
 

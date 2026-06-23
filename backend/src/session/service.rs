@@ -12,7 +12,7 @@ use super::{
         AddGroupMemberRequest, AddGroupMemberResponse, CreateGroupSessionRequest,
         CreateGroupSessionResponse, CreatePrivateSessionRequest, CreatePrivateSessionResponse,
         GroupMemberListItem, LeaveGroupSessionResponse, ListGroupMembersResponse,
-        MarkSessionReadResponse,
+        MarkSessionReadResponse, RemoveGroupMemberResponse,
     },
     repo::SessionRepository,
 };
@@ -48,6 +48,12 @@ pub trait SessionUseCase: Send + Sync {
         current_user: &CurrentUser,
         session_id: i64,
     ) -> AppResult<LeaveGroupSessionResponse>;
+    async fn remove_group_member(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+        user_id: i64,
+    ) -> AppResult<RemoveGroupMemberResponse>;
     async fn mark_session_read(
         &self,
         current_user: &CurrentUser,
@@ -278,6 +284,63 @@ where
         })
     }
 
+    async fn remove_group_member(
+        &self,
+        current_user: &CurrentUser,
+        session_id: i64,
+        user_id: i64,
+    ) -> AppResult<RemoveGroupMemberResponse> {
+        validate_positive_session_id(session_id)?;
+
+        if user_id <= 0 {
+            return Err(AppError::BadRequest(
+                "user id must be a positive integer".to_string(),
+            ));
+        }
+
+        if user_id == current_user.user_id {
+            return Err(AppError::BadRequest(
+                "use leave group to remove yourself".to_string(),
+            ));
+        }
+
+        let current_member = self
+            .repo
+            .get_group_member(session_id, current_user.user_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::Forbidden("you are not a member of this group session".to_string())
+            })?;
+
+        if current_member.role != "owner" {
+            return Err(AppError::Forbidden(
+                "only group owner can remove members".to_string(),
+            ));
+        }
+
+        let Some(target_member) = self.repo.get_group_member(session_id, user_id).await? else {
+            return Ok(RemoveGroupMemberResponse {
+                session_id,
+                user_id,
+                removed: false,
+            });
+        };
+
+        if target_member.role == "owner" {
+            return Err(AppError::BadRequest(
+                "cannot remove a group owner".to_string(),
+            ));
+        }
+
+        let removed = self.repo.remove_group_member(session_id, user_id).await?;
+
+        Ok(RemoveGroupMemberResponse {
+            session_id,
+            user_id,
+            removed,
+        })
+    }
+
     async fn mark_session_read(
         &self,
         current_user: &CurrentUser,
@@ -404,6 +467,15 @@ impl SessionUseCase for UnavailableSessionService {
         Err(AppError::DbNotConfigured)
     }
 
+    async fn remove_group_member(
+        &self,
+        _current_user: &CurrentUser,
+        _session_id: i64,
+        _user_id: i64,
+    ) -> AppResult<RemoveGroupMemberResponse> {
+        Err(AppError::DbNotConfigured)
+    }
+
     async fn list_group_members(
         &self,
         _current_user: &CurrentUser,
@@ -454,6 +526,18 @@ mod tests {
             } else {
                 (peer_user_id, user_id)
             }
+        }
+
+        fn insert_group_member(&self, session_id: i64, user_id: i64, role: &str) {
+            self.group_members.lock().unwrap().insert(
+                (session_id, user_id),
+                SessionMember {
+                    session_id,
+                    user_id,
+                    role: role.to_string(),
+                    joined_at: "2026-05-10 12:00:00+00".to_string(),
+                },
+            );
         }
     }
 
@@ -604,6 +688,15 @@ mod tests {
                 .unwrap()
                 .insert((session_id, user_id), member.clone());
             Ok(member)
+        }
+
+        async fn remove_group_member(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
+            Ok(self
+                .group_members
+                .lock()
+                .unwrap()
+                .remove(&(session_id, user_id))
+                .is_some())
         }
 
         async fn list_group_members(&self, session_id: i64) -> AppResult<Vec<GroupSessionMember>> {
@@ -838,24 +931,8 @@ mod tests {
     async fn add_group_member_returns_existing_members_idempotently() {
         let repo = FakeSessionRepository::default();
         repo.users.lock().unwrap().insert(2, true);
-        repo.group_members.lock().unwrap().insert(
-            (12, 1),
-            SessionMember {
-                session_id: 12,
-                user_id: 1,
-                role: "owner".to_string(),
-                joined_at: "2026-05-10 12:00:00+00".to_string(),
-            },
-        );
-        repo.group_members.lock().unwrap().insert(
-            (12, 2),
-            SessionMember {
-                session_id: 12,
-                user_id: 2,
-                role: "member".to_string(),
-                joined_at: "2026-05-10 12:00:00+00".to_string(),
-            },
-        );
+        repo.insert_group_member(12, 1, "owner");
+        repo.insert_group_member(12, 2, "member");
         let service = SessionService::new(repo);
 
         let response = service
@@ -865,6 +942,53 @@ mod tests {
 
         assert_eq!(response.user_id, 2);
         assert!(!response.added);
+    }
+
+    #[tokio::test]
+    async fn remove_group_member_allows_owner_to_remove_member() {
+        let repo = FakeSessionRepository::default();
+        repo.insert_group_member(12, 1, "owner");
+        repo.insert_group_member(12, 2, "member");
+        let service = SessionService::new(repo);
+
+        let response = service
+            .remove_group_member(&current_user(), 12, 2)
+            .await
+            .unwrap();
+
+        assert_eq!(response.session_id, 12);
+        assert_eq!(response.user_id, 2);
+        assert!(response.removed);
+    }
+
+    #[tokio::test]
+    async fn remove_group_member_requires_owner() {
+        let repo = FakeSessionRepository::default();
+        repo.insert_group_member(12, 1, "member");
+        repo.insert_group_member(12, 2, "member");
+        let service = SessionService::new(repo);
+
+        let error = service
+            .remove_group_member(&current_user(), 12, 2)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn remove_group_member_rejects_removing_owner() {
+        let repo = FakeSessionRepository::default();
+        repo.insert_group_member(12, 1, "owner");
+        repo.insert_group_member(12, 2, "owner");
+        let service = SessionService::new(repo);
+
+        let error = service
+            .remove_group_member(&current_user(), 12, 2)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status_code(), axum::http::StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

@@ -43,6 +43,7 @@ pub trait SessionRepository: Send + Sync {
     ) -> AppResult<Option<SessionMember>>;
     async fn list_group_members(&self, session_id: i64) -> AppResult<Vec<GroupSessionMember>>;
     async fn add_group_member(&self, session_id: i64, user_id: i64) -> AppResult<SessionMember>;
+    async fn remove_group_member(&self, session_id: i64, user_id: i64) -> AppResult<bool>;
     async fn leave_group_session(&self, session_id: i64, user_id: i64) -> AppResult<bool>;
     async fn mark_session_read(
         &self,
@@ -313,6 +314,26 @@ impl SessionRepository for PostgresSessionRepository {
         .await?;
 
         map_session_member(row)
+    }
+
+    async fn remove_group_member(&self, session_id: i64, user_id: i64) -> AppResult<bool> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM session_members sm
+            USING sessions s
+            WHERE sm.session_id = s.id
+              AND s.session_type = 'group'
+              AND sm.session_id = $1
+              AND sm.user_id = $2
+              AND sm.role = 'member'
+            "#,
+        )
+        .bind(session_id)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     async fn list_group_members(&self, session_id: i64) -> AppResult<Vec<GroupSessionMember>> {

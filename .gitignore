@@ -14,6 +14,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.playwright-cli/
+output/
+docs/testing/
 
 # IDE
 .vscode/
@@ -33,6 +36,7 @@ coverage/
 
 # Uploaded files
 uploads/
+backend/.postgres-data/
 
 # Claude
 .claude/

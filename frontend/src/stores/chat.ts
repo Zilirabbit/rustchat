@@ -9,6 +9,7 @@ import {
   leaveGroupSession,
   listGroupMembers,
   markSessionRead,
+  removeGroupMember,
 } from "../api/sessions";
 import type {
   ConversationItem,
@@ -283,6 +284,29 @@ export const useChatStore = defineStore("chat", {
           (conversation) => conversation.session_id !== sessionId,
         );
         await this.loadConversations();
+      } catch (error) {
+        this.error = getApiErrorMessage(error);
+      } finally {
+        this.groupActionInProgress = false;
+      }
+    },
+    async removeMemberFromGroup(sessionId: number, userId: number) {
+      this.groupActionInProgress = true;
+      this.error = "";
+
+      try {
+        const response = await removeGroupMember(sessionId, userId);
+
+        if (response.removed) {
+          this.groupMembersBySessionId[sessionId] = (
+            this.groupMembersBySessionId[sessionId] || []
+          ).filter((member) => member.user_id !== userId);
+        }
+
+        await Promise.all([
+          this.loadConversations(),
+          this.loadGroupMembers(sessionId),
+        ]);
       } catch (error) {
         this.error = getApiErrorMessage(error);
       } finally {

@@ -43,7 +43,7 @@ export async function uploadFile(
 
   // 2. Init upload
   const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
-  const fileType = file.type || "application/octet-stream";
+  const fileType = file.type || inferFileType(file.name);
 
   const initRes = await http
     .post<ApiResponse<InitUploadResponse>>(
@@ -89,4 +89,24 @@ export async function uploadFile(
 export function getFileDownloadUrl(fileId: number): string {
   const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:3000";
   return `${baseUrl}/api/files/${fileId}/download`;
+}
+
+function inferFileType(fileName: string) {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+
+  switch (extension) {
+    case "webm":
+      return "audio/webm";
+    case "m4a":
+      return "audio/mp4";
+    case "mp3":
+      return "audio/mpeg";
+    case "wav":
+      return "audio/wav";
+    case "ogg":
+    case "oga":
+      return "audio/ogg";
+    default:
+      return "application/octet-stream";
+  }
 }

@@ -605,7 +605,59 @@ curl -X DELETE http://127.0.0.1:3000/api/sessions/22/members/me \
 - `403`：当前用户不是该群成员
 - `503`：数据库未配置
 
-### 4.11 标记会话已读
+### 4.12 移除群成员
+
+- 方法：`DELETE`
+- 路径：`/api/sessions/{session_id}/members/{user_id}`
+- 鉴权：是
+- 请求体：无
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+说明：
+
+- 仅群聊 `owner` 可移除成员
+- 只能移除普通 `member`
+- 不能移除群主
+- 不能通过该接口移除自己；自己退出群聊应调用 `DELETE /api/sessions/{session_id}/members/me`
+- 如果目标用户已经不在群里，会返回 `removed = false`
+- 移除成功后，服务端会通知被移除用户和剩余在线群成员刷新会话状态
+
+示例请求：
+
+```bash
+curl -X DELETE http://127.0.0.1:3000/api/sessions/22/members/4 \
+  -H "Authorization: Bearer <token>"
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "group member removed",
+  "data": {
+    "session_id": 22,
+    "user_id": 4,
+    "removed": true
+  }
+}
+```
+
+可能错误：
+
+- `400`：`session_id` 或 `user_id` 不合法
+- `400`：尝试移除自己
+- `400`：尝试移除群主
+- `401`：缺少 token 或 token 非法
+- `403`：当前用户不是群主，或当前用户不是该群成员
+- `503`：数据库未配置
+
+### 4.13 标记会话已读
 
 - 方法：`POST`
 - 路径：`/api/sessions/{session_id}/read`
@@ -653,7 +705,7 @@ curl -X POST http://127.0.0.1:3000/api/sessions/12/read \
 - `403`：当前用户不是该会话成员
 - `503`：数据库未配置
 
-### 4.12 获取会话列表
+### 4.14 获取会话列表
 
 - 方法：`GET`
 - 路径：`/api/conversations`
@@ -711,7 +763,7 @@ curl http://127.0.0.1:3000/api/conversations \
 - `401`：缺少 token 或 token 非法
 - `503`：数据库未配置
 
-### 4.13 查询历史消息
+### 4.15 查询历史消息
 
 - 方法：`GET`
 - 路径：`/api/messages`
@@ -792,7 +844,7 @@ curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_i
 - `403`：当前用户不是该会话成员
 - `503`：数据库未配置
 
-### 4.14 文件上传与下载
+### 4.16 文件上传与下载
 
 文件上传使用三步 HTTP 流程：初始化上传、上传分片、完成上传。完成上传后服务端会创建一条 `message_type = "file"` 的消息，并通过 WebSocket 向会话成员推送。
 
@@ -802,11 +854,21 @@ curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_i
 - 当前用户必须是目标 session 成员
 - 文件大小范围：`1..=100MB`
 - `file_name` 最长 256 字符
-- `file_type` 最长 128 字符，空值应由客户端传 `application/octet-stream`
+- `file_type` 最长 128 字符，普通未知文件可传 `application/octet-stream`
+- 图片/GIF 应传 `image/*`，例如 `image/png`、`image/gif`
+- 语音消息应传 `audio/*`，例如 `audio/webm`、`audio/mp4`、`audio/mpeg`、`audio/wav`、`audio/ogg`
 - `file_hash` 必须是 64 位 SHA256 hex
 - 上传状态只保存在当前后端进程内，v1 不支持断点续传或跨进程恢复
+- 前端在浏览器未提供 MIME 时会按扩展名兜底推断：`.webm -> audio/webm`、`.m4a -> audio/mp4`、`.mp3 -> audio/mpeg`、`.wav -> audio/wav`、`.ogg/.oga -> audio/ogg`
 
-#### 4.14.1 初始化上传
+前端展示约定：
+
+- `image/*` 文件在消息列表中以内联图片/GIF预览展示，并支持保存到本地表情库
+- `audio/*` 文件在消息列表中以内联播放器展示
+- 历史数据中若音频 MIME 缺失，前端会按 `.webm/.m4a/.mp3/.wav/.ogg/.oga` 文件名扩展名兜底展示为语音播放器
+- 其他文件展示为普通文件卡片并提供下载
+
+#### 4.16.1 初始化上传
 
 - 方法：`POST`
 - 路径：`/api/files/init`
@@ -843,7 +905,7 @@ curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_i
 - `403`：当前用户不是该 session 成员
 - `503`：数据库未配置
 
-#### 4.14.2 上传分片
+#### 4.16.2 上传分片
 
 - 方法：`POST`
 - 路径：`/api/files/{upload_id}/chunk?index=<chunk_index>`
@@ -874,7 +936,7 @@ curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_i
 - `401`：缺少 token 或 token 非法
 - `403`：当前用户不是该上传的发起人
 
-#### 4.14.3 完成上传
+#### 4.16.3 完成上传
 
 - 方法：`POST`
 - 路径：`/api/files/{upload_id}/complete`
@@ -919,7 +981,7 @@ curl "http://127.0.0.1:3000/api/messages?session_id=12&limit=20&before_message_i
 - `401`：缺少 token 或 token 非法
 - `403`：当前用户不是该上传的发起人
 
-#### 4.14.4 下载文件
+#### 4.16.4 下载文件
 
 - 方法：`GET`
 - 路径：`/api/files/{file_id}/download`
@@ -943,7 +1005,7 @@ Content-Length: 17
 - `404`：文件不存在、已过期，或磁盘文件缺失
 - `503`：数据库未配置
 
-### 4.15 WebSocket 连接
+### 4.17 WebSocket 连接
 
 - 方法：`GET`
 - 路径：`/ws`
@@ -1071,19 +1133,21 @@ Authorization: Bearer <jwt-token>
 8. `POST /api/sessions/private`
 9. `POST /api/sessions/group`
 10. `POST /api/sessions/<group_id>/members`
-11. 连接 `GET /ws?token=<jwt>`
-12. 发送 `{"type":"send_message","session_id":<id>,"content":"hello"}`
-13. `GET /api/conversations`
-14. `GET /api/messages?session_id=<id>&limit=20`
-15. `POST /api/sessions/<id>/read`
-16. `POST /api/files/init`
-17. `POST /api/files/<upload_id>/chunk?index=0`
-18. `POST /api/files/<upload_id>/complete`
-19. `GET /api/files/<file_id>/download`
-20. `DELETE /api/sessions/<group_id>/members/me`
-21. 再次 `GET /api/conversations` 验证 `unread_count`
-22. 删除 `Authorization` 再测一次 `/api/me`
-23. 将 token 改成非法值再测一次 `/api/me`
+11. `GET /api/sessions/<group_id>/members`
+12. 群主执行 `DELETE /api/sessions/<group_id>/members/<user_id>` 验证移除普通成员
+13. 连接 `GET /ws?token=<jwt>`
+14. 发送 `{"type":"send_message","session_id":<id>,"content":"hello"}`
+15. `GET /api/conversations`
+16. `GET /api/messages?session_id=<id>&limit=20`
+17. `POST /api/sessions/<id>/read`
+18. `POST /api/files/init`，分别覆盖普通文件、图片/GIF、语音文件
+19. `POST /api/files/<upload_id>/chunk?index=0`
+20. `POST /api/files/<upload_id>/complete`
+21. `GET /api/files/<file_id>/download`
+22. `DELETE /api/sessions/<group_id>/members/me`
+23. 再次 `GET /api/conversations` 验证 `unread_count`
+24. 删除 `Authorization` 再测一次 `/api/me`
+25. 将 token 改成非法值再测一次 `/api/me`
 
 ## 6. 维护约定
 

@@ -67,6 +67,13 @@ pub struct LeaveGroupSessionResponse {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RemoveGroupMemberResponse {
+    pub session_id: i64,
+    pub user_id: i64,
+    pub removed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct MarkSessionReadResponse {
     pub session_id: i64,
     pub last_read_message_id: Option<i64>,

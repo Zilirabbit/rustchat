@@ -17,6 +17,7 @@ use super::dto::{
     AddGroupMemberRequest, AddGroupMemberResponse, CreateGroupSessionRequest,
     CreateGroupSessionResponse, CreatePrivateSessionRequest, CreatePrivateSessionResponse,
     LeaveGroupSessionResponse, ListGroupMembersResponse, MarkSessionReadResponse,
+    RemoveGroupMemberResponse,
 };
 
 pub async fn create_private_session(
@@ -95,6 +96,42 @@ pub async fn leave_group_session(
         .await?;
 
     Ok(ok("group session left", response))
+}
+
+pub async fn remove_group_member(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Path((session_id, user_id)): Path<(i64, i64)>,
+) -> Result<Json<ApiResponse<RemoveGroupMemberResponse>>, AppError> {
+    let response = state
+        .session_service
+        .remove_group_member(&current_user, session_id, user_id)
+        .await?;
+
+    if response.removed {
+        notify_conversation_updated(&state, user_id, session_id).await;
+
+        if let Ok(members) = state
+            .session_service
+            .list_group_members(&current_user, session_id)
+            .await
+        {
+            let member_user_ids = members
+                .members
+                .iter()
+                .map(|member| member.user_id)
+                .collect::<Vec<_>>();
+            notify_group_members_conversation_updated(
+                &state,
+                &member_user_ids,
+                current_user.user_id,
+                session_id,
+            )
+            .await;
+        }
+    }
+
+    Ok(ok("group member removed", response))
 }
 
 pub async fn mark_session_read(

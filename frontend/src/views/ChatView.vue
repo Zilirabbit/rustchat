@@ -75,7 +75,7 @@
               class="user-chip"
               type="button"
               :disabled="actionsDisabled"
-              @click="removeGroupMember(user.user_id)"
+              @click="removeSelectedGroupMember(user.user_id)"
             >
               {{ user.username }}
             </button>
@@ -181,6 +181,7 @@
           :loading="chatStore.loadingMessages"
           @retry="retryMessage"
           @download-error="showFileDownloadError"
+          @sticker-saved="showStickerSaved"
         />
         <div v-else class="empty-chat">
           <h1>No room selected</h1>
@@ -194,6 +195,7 @@
           :upload-progress="uploadProgress"
           @send="sendMessage"
           @file-selected="onFileSelected"
+          @recording-error="showRecordingError"
         />
       </section>
 
@@ -202,7 +204,11 @@
           <h2>{{ activeConversation.session_name }}</h2>
           <p class="muted-line">Group members from the existing members API.</p>
 
-          <form class="private-search add-member-search" @submit.prevent="searchAddUsers">
+          <form
+            v-if="isActiveGroupOwner"
+            class="private-search add-member-search"
+            @submit.prevent="searchAddUsers"
+          >
             <input
               v-model="addKeyword"
               type="search"
@@ -211,9 +217,12 @@
             />
             <button type="submit" :disabled="actionsDisabled">Go</button>
           </form>
+          <p v-else class="muted-line">
+            Only the group owner can add or remove members.
+          </p>
           <p v-if="addSearchError" class="inline-error">{{ addSearchError }}</p>
           <p v-else-if="addSearchLoading" class="muted-line">Searching...</p>
-          <div v-if="addCandidates.length" class="private-results member-add-results">
+          <div v-if="isActiveGroupOwner && addCandidates.length" class="private-results member-add-results">
             <button
               v-for="user in addCandidates"
               :key="user.user_id"
@@ -249,6 +258,15 @@
                 <strong>{{ member.username }}</strong>
                 <small>{{ roleLabel(member.role) }} · Joined {{ formatDate(member.joined_at) }}</small>
               </span>
+              <button
+                v-if="canRemoveGroupMember(member)"
+                class="member-remove-button"
+                type="button"
+                :disabled="actionsDisabled"
+                @click="removeActiveGroupMember(member.user_id)"
+              >
+                Remove
+              </button>
             </div>
           </div>
 
@@ -306,11 +324,12 @@ const addSearchError = ref("");
 const addCandidates = ref<UserSearchItem[]>([]);
 const uploadProgress = ref<number | null>(null);
 const uploadFileName = ref("");
+const actionMessage = ref("");
 
 const activeConversation = computed(() => chatStore.activeConversation);
 const activeMessages = computed(() => chatStore.activeMessages);
 const visibleError = computed(
-  () => chatStore.error || connectionStore.lastError || authStore.error,
+  () => chatStore.error || connectionStore.lastError || authStore.error || actionMessage.value,
 );
 const connectionLabel = computed(() => {
   if (connectionStore.connected) {
@@ -351,6 +370,12 @@ const actionsDisabled = computed(
 const activeMemberIds = computed(
   () => new Set(chatStore.activeGroupMembers.map((member) => member.user_id)),
 );
+const currentGroupMember = computed(() =>
+  chatStore.activeGroupMembers.find(
+    (member) => member.user_id === authStore.user?.user_id,
+  ) || null,
+);
+const isActiveGroupOwner = computed(() => currentGroupMember.value?.role === "owner");
 
 onMounted(async () => {
   await authStore.restoreSession();
@@ -427,7 +452,7 @@ function selectGroupMember(user: UserSearchItem) {
   selectedGroupMembers.value = [...selectedGroupMembers.value, user];
 }
 
-function removeGroupMember(userId: number) {
+function removeSelectedGroupMember(userId: number) {
   selectedGroupMembers.value = selectedGroupMembers.value.filter(
     (user) => user.user_id !== userId,
   );
@@ -476,13 +501,29 @@ async function searchAddUsers() {
 }
 
 function addGroupMember(userId: number) {
-  if (!chatStore.activeSessionId || isActiveMember(userId)) {
+  if (!chatStore.activeSessionId || !isActiveGroupOwner.value || isActiveMember(userId)) {
     return;
   }
 
   void chatStore.addMemberToGroup(chatStore.activeSessionId, userId);
   addKeyword.value = "";
   addCandidates.value = [];
+}
+
+function removeActiveGroupMember(userId: number) {
+  if (!chatStore.activeSessionId || !isActiveGroupOwner.value) {
+    return;
+  }
+
+  void chatStore.removeMemberFromGroup(chatStore.activeSessionId, userId);
+}
+
+function canRemoveGroupMember(member: { user_id: number; role: string }) {
+  return (
+    isActiveGroupOwner.value &&
+    member.role !== "owner" &&
+    member.user_id !== authStore.user?.user_id
+  );
 }
 
 function isActiveMember(userId: number) {
@@ -566,10 +607,24 @@ function showFileDownloadError(message: string) {
   chatStore.error = message;
 }
 
+function showStickerSaved(message: string) {
+  actionMessage.value = message;
+  window.setTimeout(() => {
+    if (actionMessage.value === message) {
+      actionMessage.value = "";
+    }
+  }, 2400);
+}
+
+function showRecordingError(message: string) {
+  chatStore.error = message;
+}
+
 function clearErrors() {
   chatStore.error = "";
   authStore.error = "";
   connectionStore.clearError();
+  actionMessage.value = "";
 }
 
 async function logout() {
