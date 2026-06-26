@@ -8,12 +8,16 @@ This directory contains product, architecture, API, setup, design, and progress 
 - [Product spec](product/spec.md)
 - [Task list](product/task.md)
 - [Requirements analysis](product/requirements-analysis.md)
+- [Phase timeline](product/phase-timeline.md)
+- [Phase breakdown](product/phase-breakdown.md)
+- [Git commit history](product/git-commit-history.md)
 - [Frontend UI plan](product/frontend-ui-plan.md)
 
 ## Architecture
 
 - [Project structure](architecture/project-structure.md)
 - [Database design](architecture/db.md)
+- [Technical architecture diagram](architecture/technical-architecture.md)
 
 ## API
 

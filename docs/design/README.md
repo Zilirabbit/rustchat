@@ -6,13 +6,13 @@
 
 - `PROMPT.md`：用于生成高保真桌面聊天 UI 的主提示词，英文部分可直接作为 image prompt。
 - `DESIGN.md`：MongoDB 风格设计 token，包含颜色、字体、圆角、间距和组件规则。
-- `../img/1c055bc9-1852-4465-8ca2-3152fbd082a3.png`：参考图，用于约束三栏布局、白绿主题、消息区密度和整体视觉质感。
+- `../img/UI-preview.png`：参考图，用于约束三栏布局、白绿主题、消息区密度和整体视觉质感。
 
 ## 生成步骤
 
 1. 读取 `PROMPT.md` 的英文部分作为基础生成提示。
 2. 读取 `DESIGN.md`，将其中的 `canvas`、`surface`、`hairline`、`brand-green`、`brand-green-dark`、`rounded.md` 等 token 作为视觉约束。
-3. 将参考图 `../img/1c055bc9-1852-4465-8ca2-3152fbd082a3.png` 作为 image reference。
+3. 将参考图 `../img/UI-preview.png` 作为 image reference。
 4. 追加项目约束：
    - 品牌名使用 `Rust Chat`。
    - 当前前端实现只展示已有接口能支撑的数据。

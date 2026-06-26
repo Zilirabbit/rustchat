@@ -88,6 +88,7 @@ v0.2.0-phase1-common.md
 - [v0.1.1 - phase5.5.1/2 - 群聊成员列表与退出一致性](./frontend/v0.1.1-phase5.5.1-2-group-member-list-and-leave-consistency.md)
 - [v0.1.1 - phase5.5.3 - WebSocket 自动重连与连接状态提示](./frontend/v0.1.1-phase5.5.3-websocket-reconnect.md)
 - [v0.1.1 - phase5.5.4 - 消息发送体验](./frontend/v0.1.1-phase5.5.4-message-send-experience.md)
+- [v0.1.1 - phase5.5.6-8 - 媒体消息、群主成员管理与会话实时刷新](./integration/v0.1.1-phase5.5.6-8-media-and-group-owner-controls.md)
 - 私聊一致性补强记录见 Phase 3 的“私聊唯一性约束”。
 - 后续可继续放：双端 WebSocket 验收、未读/已读增强、部署记录。
 

@@ -15,4 +15,5 @@
 ## 当前记录
 
 - [v0.1.0 - Phase 4 - HTTP 接口联调](./v0.1.0-phase4-http-api-integration.md)
+- [v0.1.1 - phase5.5.6-8 - 媒体消息、群主成员管理与会话实时刷新](./v0.1.1-phase5.5.6-8-media-and-group-owner-controls.md)
 - [v0.1.1 - phase5.6 - 文件上传稳定 v1](./v0.1.1-phase5.6-file-upload-stable-v1.md)

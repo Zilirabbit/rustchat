@@ -1,0 +1,48 @@
+# RustChat Git 提交记录导出
+
+本文档导出当前 `dev` 分支的 Git 提交历史，按提交时间正序排列。
+
+导出口径：
+
+- 命令来源：`git log --date=short --pretty=format:'%h %H %ad %an %s' --reverse`
+- 导出日期：2026-06-25
+- 分支：`dev`
+
+## 提交记录
+
+| 短 hash | 完整 hash | 日期 | 作者 | 提交信息 |
+|---|---|---|---|---|
+| `d81212c` | `d81212c5d42fdb928ef63d58285835b0e0ee58af` | 2026-04-20 | rabbit | chore(project): initialize repository |
+| `8e0bfa1` | `8e0bfa16ead47be8ab7a5ce33e036b4b91a0376b` | 2026-04-21 | rabbit | feat(backend): complete phase 1 project initialization and verify postgres connectivity |
+| `976c0c4` | `976c0c46e032b69420501bd8f613a80456d0f96c` | 2026-04-23 | rabbit | feat(backend): complete phase 1 common/storage/user auth foundation |
+| `df69705` | `df69705c874697e56cbc62a9e5e0d73f4ebe8a18` | 2026-05-03 | rabbit | feat: add auth and logging middleware with api docs for postman testing |
+| `6025990` | `6025990af85311d8bd04541bd873d8f06da5692f` | 2026-05-03 | rabbit | feat: add websocket connection foundation |
+| `192fb04` | `192fb043d344f8b2e4630f7a271696cecdeaff4e` | 2026-05-03 | rabbit | feat: implement private chat session and message flow |
+| `da1f154` | `da1f154edcf8f7ca9a6c08c1e60d0a98bcb577a5` | 2026-05-07 | rabbit | feat: implement conversation list and message history features. |
+| `051fedc` | `051fedc24170336d65c80e87962e15511b80196c` | 2026-05-07 | rabbit | test: add real database private chat integration flow |
+| `df7f56c` | `df7f56c15d0a1e757ed528baec3f3fa3eead6b5c` | 2026-05-08 | rabbit | feat: add client preflight chat APIs |
+| `50c8d3c` | `50c8d3c5683a56bf8395c56521c26244fd5dad19` | 2026-05-08 | rabbit | docs: add frontend environment setup plan |
+| `f998f22` | `f998f2232e6646949241a6239cf7b4c701598d91` | 2026-05-09 | rabbit | chore: setup frontend environment |
+| `90814bf` | `90814bf6563acc81dce4b20ae02541789f9047be` | 2026-05-09 | rabbit | docs: add some details |
+| `0496c3e` | `0496c3e60f080cc705a3c1a586c6026a3eecbeb3` | 2026-05-09 | rabbit | feat(frontend): implement chat UI |
+| `8383d7f` | `8383d7f8d42ad7360b1507180038d8f9a5cb8afd` | 2026-05-09 | rabbit | chore(git): document large file cleanup |
+| `21fc585` | `21fc5852a346e8fc0b6f3ab3e06b54c4390ff32b` | 2026-05-09 | rabbit | docs: organize summary records |
+| `3af1736` | `3af173640c5c57113fa2d81272b9fcc344c62ddd` | 2026-05-09 | rabbit | fix: support http api integration flow |
+| `6d1259f` | `6d1259f45b443e964e15f6628bfe98d247fc4dd2` | 2026-05-10 | rabbit | feat: add group chat support |
+| `4496f06` | `4496f061081b0c8e5d5bb65e2808563af4dde3d3` | 2026-05-10 | rabbit | fix: ensure private session uniqueness |
+| `e439996` | `e43999615402bacf9b94026c90717f89c2c5eb08` | 2026-05-10 | rabbit | docs: reorganize summary milestones |
+| `2e55e1a` | `2e55e1ae5f425975b99baab05672976282e771c2` | 2026-05-10 | rabbit | feat: improve group chat member experience |
+| `c662f65` | `c662f65c73b1a27626967414efc690b948441492` | 2026-05-10 | rabbit | Refine frontend real-data chat UI and design assets |
+| `1b0eb03` | `1b0eb03ca391b8d6df756ec222b452372810004f` | 2026-05-12 | rabbit | feat(frontend): add websocket reconnect status |
+| `46117c7` | `46117c7e90a91bbe3a156c2152b345a9b4edf84c` | 2026-05-12 | rabbit | docs: expand websocket experience tasks |
+| `e4aefbc` | `e4aefbcd4bae3a63e49ca7ec20cb830f8c287e67` | 2026-05-12 | rabbit | feat(frontend): recover chat data after reconnect |
+| `bd00703` | `bd007032a304587b4c7f4cda19d17d7b3a8a8fe6` | 2026-05-12 | rabbit | feat: improve message send experience |
+| `b14d040` | `b14d040eb9d125a0bf72368f662e43ea59f383dd` | 2026-05-13 | AlexiosChiu | add file upload feature |
+| `f813a60` | `f813a607640a93211479de97eaf1eeb44c7cccff` | 2026-05-13 | AlexiosChiu | update gitignore |
+| `1e46189` | `1e4618957c02370abdbf8004fe967f8387c0dcd9` | 2026-05-13 | rabbit | merge posting-file feature into dev |
+| `7866465` | `78664656963e7e5077a4b23e3c86b719e482c58d` | 2026-05-13 | rabbit | fix(frontend): refine reconnect layout and verification notes |
+| `4a0898d` | `4a0898db0a58f81d073d23bfac81df582e2b7aae` | 2026-05-13 | rabbit | feat: harden file upload v1 |
+| `4eed191` | `4eed191474dafffdc5a29a6b97a31990a6e625d6` | 2026-06-18 | rabbit | Update docs structure and group invite realtime sync |
+| `23ce150` | `23ce150670f8d6ce3d461f47cf78c02438cd1cab` | 2026-06-21 | rabbit | Merge branch 'save-head-4eed191' into dev |
+| `36b3cf1` | `36b3cf12a6ca54123f9bb3c6d126e241b61894fa` | 2026-06-23 | chensishen | Add media messaging and group owner controls |
+
