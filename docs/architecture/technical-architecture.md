@@ -2,11 +2,11 @@
 
 本文档用于展示 RustChat 当前项目的技术架构。图示仿照常见系统技术架构图的表达方式，将访问终端、前端服务、接入服务、后端服务、存储服务、实时连接、认证安全、配置日志和开发联调工具统一放在一张图中。
 
-![RustChat 技术架构图](../img/rustchat-technical-architecture.drawio.svg)
+![RustChat 技术架构图](../img/rustchat-technical-architecture-v2.drawio.svg)
 
 可编辑源文件：
 
-- [draw.io SVG 版本](../img/rustchat-technical-architecture.drawio.svg)
+- [draw.io SVG 版本](../img/rustchat-technical-architecture-v2.drawio.svg)
 
 ## 架构说明
 
